@@ -191,6 +191,7 @@ class SummaryService:
         else:
             # 2. 生成总结
             formatted_chat = self._format_messages(messages, my_id)
+            logger.info(f"定时总结: group_id={group_id} msg_length={len(formatted_chat)} content:\n{formatted_chat}")
             if not formatted_chat:
                 summary = "筛选后没有可供总结的聊天内容。"
             else:
@@ -209,7 +210,6 @@ class SummaryService:
         # 格式为 "platform:message_type:session_id"
         # 假设我们使用的是 aiocqhttp 平台
         # umo = f"aiocqhttp:group:{group_id}"
-
         # await self.context.send_message(umo, message_chain)
 
         payload = {
