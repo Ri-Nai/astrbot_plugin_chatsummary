@@ -21,7 +21,7 @@ class PluginConfig:
 
     def _load_from_file(self, config_file_path: str) -> None:
         try:
-            with open(config_file_path, 'r', encoding='utf-8-sig') as f:
+            with open(config_file_path, "r", encoding="utf-8-sig") as f:
                 config = json.load(f)
                 self._merge_data(config)
         except FileNotFoundError:
@@ -45,8 +45,8 @@ class PluginConfig:
         self._data.update(candidate)
 
     def _sync_prompt(self) -> None:
-        prompt_value = self._data.get('prompt', self.prompt)
-        self.prompt = str(prompt_value).replace('\\n', '\n')
+        prompt_value = self._data.get("prompt", self.prompt)
+        self.prompt = str(prompt_value).replace("\\n", "\n")
 
     def merge(self, data) -> None:
         self._merge_data(data)
@@ -57,8 +57,8 @@ class PluginConfig:
 
     def to_dict(self) -> dict:
         merged = dict(self._data)
-        merged['prompt'] = self.prompt
-        merged['wake_prefix'] = self.wake_prefix
+        merged["prompt"] = self.prompt
+        merged["wake_prefix"] = self.wake_prefix
         return merged
 
 
@@ -66,7 +66,9 @@ def load_config(context, runtime_config=None) -> PluginConfig:
     """加载插件配置"""
     main_config = context.get_config() or {}
 
-    plugin_config_path = os.path.join('data', 'config', 'astrbot_plugin_chatsummary_config.json')
+    plugin_config_path = os.path.join(
+        "data", "config", "astrbot_plugin_chatsummary_config.json"
+    )
     p_config = PluginConfig(plugin_config_path, runtime_config)
 
     p_config.wake_prefix = main_config.get("wake_prefix", [])

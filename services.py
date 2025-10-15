@@ -191,7 +191,9 @@ class SummaryService:
         else:
             # 2. 生成总结
             formatted_chat = self._format_messages(messages, my_id)
-            logger.info(f"定时总结: group_id={group_id} msg_length={len(formatted_chat)} content:\n{formatted_chat}")
+            logger.info(
+                f"定时总结: group_id={group_id} msg_length={len(formatted_chat)} content:\n{formatted_chat}"
+            )
             if not formatted_chat:
                 summary = "筛选后没有可供总结的聊天内容。"
             else:
