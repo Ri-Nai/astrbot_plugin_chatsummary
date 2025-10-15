@@ -7,7 +7,7 @@ from .config import load_config
 from .services import SummaryService
 from .handlers import ChatHandler
 
-@register("astrbot_plugin_chatsummary", "laopanmemz", "一个基于LLM的历史聊天记录总结插件", "1.3.0-refactored")
+@register("astrbot_plugin_chatsummary", "Ri-Nai", "一个基于LLM的历史聊天记录总结插件", "1.3.0-refactored")
 class ChatSummary(Star):
     def __init__(self, context: Context):
         super().__init__(context)

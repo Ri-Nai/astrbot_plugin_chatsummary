@@ -1,6 +1,11 @@
-name: astrbot_plugin_summary
-desc: 一个基于LLM的历史聊天记录总结插件。
-help: 输入 /消息总结 + [空格] + 要总结的聊天记录数量（仅整数）触发消息总结。
-version: v1.0.0
+name: astrbot_plugin_chatsummary
+desc: 一个基于 LLM 的历史聊天记录总结插件，支持按数量和时间范围总结群聊消息。
+help: |
+  群聊使用: /消息总结 [数量或时间范围]
+  示例: /消息总结 100 或 /消息总结 1h
+  
+  私聊使用: /群总结 [数量或时间] [群号]
+  示例: /群总结 100 123456789
+version: v1.3.0
 author: Ri-Nai
-repo: https://github.com/Ri-Nai/astrbot_plugin_summary
+repo: https://github.com/Ri-Nai/astrbot_plugin_chatsummary
