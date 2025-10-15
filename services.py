@@ -3,7 +3,7 @@
 import json
 from datetime import datetime, timedelta
 from astrbot.api.event import AstrMessageEvent
-from astrbot.core import logger
+from astrbot.api import logger
 from .utils import parse_time_delta
 
 from astrbot.api.event import MessageChain
@@ -140,7 +140,10 @@ class SummaryService:
         生成并发送定时的聊天总结。
         这是一个主动消息发送的例子。
         """
-        client = self.context.bot  # 假设 context 有 bot
+        from astrbot.api.platform import AiocqhttpAdapter # 其他平台同理
+        platform = self.context.get_platform(filter.PlatformAdapterType.AIOCQHTTP)
+        assert isinstance(platform, AiocqhttpAdapter)
+        client = platform.get_client()
         
         try:
             login_info = await client.api.call_action("get_login_info")
