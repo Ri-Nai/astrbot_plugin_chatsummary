@@ -33,7 +33,7 @@ class ChatSummary(Star):
             asyncio.create_task(self._run_scheduled_summaries())
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
-    @filter.command("消息总结", aliases={"省流", "总结一下"})
+    @filter.command("消息总结", alias={"省流", "总结一下"})
     async def summary(self, event: AstrMessageEvent, arg: str = None):
         """群聊场景触发消息总结。"""
         if arg is None:
@@ -64,7 +64,8 @@ class ChatSummary(Star):
             event, group_id, str(arg)
         ):
             yield result
-    @filter.command("help", aliases={"帮助", "helpme"})
+
+    @filter.command("help", alias={'帮助', 'helpme'})
     async def help(self, event: AstrMessageEvent):
         """提供帮助信息。"""
         help_text = (
@@ -75,6 +76,7 @@ class ChatSummary(Star):
             "时间示例: 1h30m (总结过去1小时30分钟内的消息)"
         )
         yield event.plain_result(help_text)
+
     async def _run_scheduled_summaries(self):
         """后台定时任务，用于每天发送总结"""
         while True:
