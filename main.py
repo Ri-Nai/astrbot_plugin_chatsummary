@@ -33,7 +33,7 @@ class ChatSummary(Star):
             asyncio.create_task(self._run_scheduled_summaries())
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
-    @filter.command("消息总结")
+    @filter.command("消息总结", aliases={"省流", "总结一下"})
     async def summary(self, event: AstrMessageEvent, arg: str = None):
         """群聊场景触发消息总结。"""
         if arg is None:
