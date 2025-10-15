@@ -64,7 +64,17 @@ class ChatSummary(Star):
             event, group_id, str(arg)
         ):
             yield result
-
+    @filter.command("help", aliases={"帮助", "helpme"})
+    async def help(self, event: AstrMessageEvent):
+        """提供帮助信息。"""
+        help_text = (
+            "/help - 显示此帮助信息\n"
+            "/消息总结 [数量或时间] - 在群聊中总结最近的聊天记录\n"
+            "/群总结 [数量或时间] [群号] - 在私聊中总结指定群的聊天记录\n"
+            "数量示例: 100 (总结最近100条消息)\n"
+            "时间示例: 1h30m (总结过去1小时30分钟内的消息)"
+        )
+        yield event.plain_result(help_text)
     async def _run_scheduled_summaries(self):
         """后台定时任务，用于每天发送总结"""
         while True:
