@@ -6,6 +6,6 @@ help: |
   
   私聊使用: /群总结 [数量或时间] [群号]
   示例: /群总结 100 123456789
-version: v1.3.0
+version: v1.4.0
 author: Ri-Nai
 repo: https://github.com/Ri-Nai/astrbot_plugin_chatsummary
