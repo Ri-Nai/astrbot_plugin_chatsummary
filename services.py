@@ -6,6 +6,8 @@ from astrbot.api.event import AstrMessageEvent
 from astrbot.core import logger
 from .utils import parse_time_delta
 
+from astrbot.api.event import MessageChain
+import astrbot.api.message_components as Comp
 
 class SummaryService:
     def __init__(self, context, config):
@@ -132,3 +134,48 @@ class SummaryService:
         except Exception as e:
             logger.error(f"获取群聊 {group_id} 历史消息失败: {e}")
             return []
+
+    async def create_and_send_scheduled_summary(self, group_id: str, interval: str):
+        """
+        生成并发送定时的聊天总结。
+        这是一个主动消息发送的例子。
+        """
+        client = self.context.bot  # 假设 context 有 bot
+        
+        try:
+            login_info = await client.api.call_action("get_login_info")
+            my_id = login_info.get("user_id")
+        except Exception as e:
+            logger.error(f"获取登录信息失败: {e}")
+            return
+
+        # 1. 获取消息记录
+        time_delta = parse_time_delta(interval)
+        if not time_delta:
+            logger.error(f"无效的时间间隔: {interval}")
+            return
+        messages = await self._get_messages_by_time(client, int(group_id), time_delta)
+
+        if not messages:
+            summary = "在过去的一天里，本群没有任何新消息。"
+        else:
+            # 2. 生成总结
+            formatted_chat = self._format_messages(messages, my_id)
+            if not formatted_chat:
+                summary = "筛选后没有可供总结的聊天内容。"
+            else:
+                try:
+                    summary = await self.get_summary_from_llm(formatted_chat)
+                except Exception as e:
+                    logger.error(f"调用LLM失败: {e}")
+                    summary = "抱歉，总结服务出现了一点问题。"
+
+        # 3. 构建消息链并发送
+        message_chain = MessageChain([Comp.Plain(text=f"【每日聊天总结】\n\n{summary}")])
+        
+        # 4. 构建统一消息源 (unified_msg_origin) 以指定发送目标
+        # 格式为 "platform:message_type:session_id"
+        # 假设我们使用的是 aiocqhttp 平台
+        umo = f"aiocqhttp:group:{group_id}"
+
+        await self.context.send_message(umo, message_chain)

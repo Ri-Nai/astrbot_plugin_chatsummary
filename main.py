@@ -7,6 +7,9 @@ from .config import load_config
 from .services import SummaryService
 from .handlers import ChatHandler
 
+import asyncio
+from datetime import datetime, timedelta
+
 @register("astrbot_plugin_chatsummary", "Ri-Nai", "一个基于LLM的历史聊天记录总结插件", "1.3.0-refactored")
 class ChatSummary(Star):
     def __init__(self, context: Context):
@@ -17,6 +20,10 @@ class ChatSummary(Star):
         self.summary_service = SummaryService(self.context, self.config)
         # 3. 初始化处理器
         self.chat_handler = ChatHandler(self.context, self.config, self.summary_service)
+
+        # 启动定时任务
+        if self.config.get("scheduled_summary", {}).get("enabled"):
+            asyncio.create_task(self._run_scheduled_summaries())
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     @filter.command("消息总结")
@@ -40,3 +47,30 @@ class ChatSummary(Star):
 
         async for result in self.chat_handler.process_summary_request(event, group_id, str(arg)):
             yield result
+
+    async def _run_scheduled_summaries(self):
+        """后台定时任务，用于每天发送总结"""
+        while True:
+            now = datetime.now()
+            schedule_time_str = self.config.get("scheduled_summary", {}).get("schedule_time", "22:00")
+            schedule_time = datetime.strptime(schedule_time_str, "%H:%M").time()
+            
+            next_run = now.replace(hour=schedule_time.hour, minute=schedule_time.minute, second=0, microsecond=0)
+            if now > next_run:
+                next_run += timedelta(days=1)
+            
+            sleep_seconds = (next_run - now).total_seconds()
+            await asyncio.sleep(sleep_seconds)
+            
+            # 执行总结任务
+            scheduled_config = self.config.get("scheduled_summary")
+            group_ids = scheduled_config.get("group_ids", [])
+            interval = scheduled_config.get("interval", "24h")
+            
+            for group_id in group_ids:
+                try:
+                    await self.summary_service.create_and_send_scheduled_summary(group_id, interval)
+                except Exception as e:
+                    # 使用 AstrBot 的日志接口记录错误
+                    from astrbot.core import logger
+                    logger.error(f"为群 {group_id} 发送定时总结失败: {e}")
