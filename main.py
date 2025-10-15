@@ -12,17 +12,18 @@ from datetime import datetime, timedelta
 
 @register("astrbot_plugin_chatsummary", "Ri-Nai", "一个基于LLM的历史聊天记录总结插件", "1.3.0-refactored")
 class ChatSummary(Star):
-    def __init__(self, context: Context):
+    def __init__(self, context: Context, config=None):
         super().__init__(context)
         # 1. 加载配置
-        self.config = load_config(self.context)
+        self.config = load_config(self.context, config)
         # 2. 初始化服务
         self.summary_service = SummaryService(self.context, self.config)
         # 3. 初始化处理器
         self.chat_handler = ChatHandler(self.context, self.config, self.summary_service)
 
         # 启动定时任务
-        if self.config.get("scheduled_summary", {}).get("enabled"):
+        scheduled_config = self.config.get("scheduled_summary", {})
+        if scheduled_config.get("enabled"):
             asyncio.create_task(self._run_scheduled_summaries())
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
@@ -63,7 +64,7 @@ class ChatSummary(Star):
             await asyncio.sleep(sleep_seconds)
             
             # 执行总结任务
-            scheduled_config = self.config.get("scheduled_summary")
+            scheduled_config = self.config.get("scheduled_summary", {})
             group_ids = scheduled_config.get("group_ids", [])
             interval = scheduled_config.get("interval", "24h")
             
