@@ -11,7 +11,7 @@
     "items": {
       "enabled": {
         "description": "是否开启定时总结",
-        "type": "boolean",
+        "type": "bool",
         "default": false
       },
       "schedule_time": {
