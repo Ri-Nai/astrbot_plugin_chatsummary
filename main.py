@@ -65,7 +65,7 @@ class ChatSummary(Star):
         ):
             yield result
 
-    @filter.command("help", alias={'帮助', 'helpme'})
+    @filter.command("help", alias={"帮助", "helpme"})
     async def help(self, event: AstrMessageEvent):
         """提供帮助信息。"""
         help_text = (
