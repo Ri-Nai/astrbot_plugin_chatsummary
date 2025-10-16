@@ -52,9 +52,10 @@
 
 ```json
 {
+  "default_prompt": "请你作为一个专业的社群聊天记录总结分析师...",
   "group1": {
     "id": "123456789",
-    "summary_prompt": "请你作为一个专业的社群聊天记录总结分析师...",
+    "summary_prompt": "",
     "scheduled_summary": {
       "enabled": true,
       "schedule_time": "22:00",
@@ -75,16 +76,25 @@
 
 ### 配置项说明
 
-- **id**: 群号（必填）
-- **summary_prompt**: 该群组专用的 LLM 提示词（可选，默认使用通用提示词）
-- **scheduled_summary**: 定时总结配置
-  - **enabled**: 是否启用定时总结（true/false）
-  - **schedule_time**: 每天发送总结的时间（HH:MM 格式，如 "22:00"）
-  - **interval**: 总结的时间范围（如 "24h" 表示总结过去 24 小时的消息）
+- **default_prompt**: 默认的 LLM 提示词，当群组未配置 `summary_prompt` 时使用
+- **groupN**: 群组配置（N 为数字，如 group1, group2, group3...）
+  - **id**: 群号（必填）
+  - **summary_prompt**: 该群组专用的 LLM 提示词（可选，留空则使用 `default_prompt`）
+  - **scheduled_summary**: 定时总结配置
+    - **enabled**: 是否启用定时总结（true/false）
+    - **schedule_time**: 每天发送总结的时间（HH:MM 格式，如 "22:00"）
+    - **interval**: 总结的时间范围（如 "24h" 表示总结过去 24 小时的消息）
+
+### 提示词使用逻辑
+
+1. 如果群组配置了非空的 `summary_prompt`，则使用该群组的专用提示词
+2. 如果群组的 `summary_prompt` 为空或未配置，则使用全局的 `default_prompt`
+3. 这样可以为大部分群组使用统一的提示词，只为特殊群组定制不同的总结风格
 
 ### 定时总结功能
 
 插件支持为每个群组独立配置定时总结：
+- 每个群组都有独立的异步任务处理定时总结
 - 每天在指定时间自动发送总结
 - 可自定义总结的时间范围
 - 支持多个群组不同的发送时间

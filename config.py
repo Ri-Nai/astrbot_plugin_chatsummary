@@ -8,7 +8,7 @@ from astrbot.core import logger
 
 class PluginConfig:
     def __init__(self, config_file_path: str, initial_data=None):
-        self.prompt = "请总结以下聊天记录："
+        self.default_prompt = "请总结以下聊天记录："
         self.wake_prefix = []
         self._data = {}
         self._groups = {}  # 存储群组配置
@@ -46,24 +46,30 @@ class PluginConfig:
         self._data.update(candidate)
 
     def _sync_prompt(self) -> None:
-        prompt_value = self._data.get("prompt", self.prompt)
-        self.prompt = str(prompt_value).replace("\\n", "\n")
-
+        # 先获取 default_prompt，如果没有则使用内置默认值
+        default_prompt_value = self._data.get("default_prompt", self.prompt)
+        self.default_prompt = str(default_prompt_value).replace("\\n", "\n")
+        
     def _parse_groups(self) -> None:
         """解析群组配置"""
         for key, value in self._data.items():
             if key.startswith("group") and isinstance(value, dict):
                 group_id = value.get("id")
                 if group_id:
+                    # 如果群组没有配置 summary_prompt，使用 default_prompt
+                    group_prompt = value.get("summary_prompt")
+                    if not group_prompt:
+                        group_prompt = self.default_prompt
+                    
                     self._groups[str(group_id)] = {
-                        "summary_prompt": value.get("summary_prompt", self.prompt),
+                        "summary_prompt": group_prompt,
                         "scheduled_summary": value.get("scheduled_summary", {})
                     }
 
     def get_group_config(self, group_id: str) -> dict:
         """获取指定群组的配置"""
         return self._groups.get(str(group_id), {
-            "summary_prompt": self.prompt,
+            "summary_prompt": self.default_prompt,
             "scheduled_summary": {}
         })
 
