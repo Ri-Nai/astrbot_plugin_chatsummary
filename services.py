@@ -2,12 +2,9 @@
 
 import json
 from datetime import datetime, timedelta
-from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api import logger
 from .utils import parse_time_delta
 
-from astrbot.api.event import MessageChain
-import astrbot.api.message_components as Comp
 
 
 class SummaryService:
