@@ -2,6 +2,7 @@
 
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
+from astrbot.core import logger
 
 from .config import load_config
 from .services import SummaryService
@@ -27,10 +28,16 @@ class ChatSummary(Star):
         # 3. 初始化处理器
         self.chat_handler = ChatHandler(self.context, self.config, self.summary_service)
 
-        # 启动定时任务
-        scheduled_config = self.config.get("scheduled_summary", {})
-        if scheduled_config.get("enabled"):
-            asyncio.create_task(self._run_scheduled_summaries())
+        # 为每个启用定时总结的群组创建独立的异步任务
+        scheduled_groups = self.config.get_all_scheduled_groups()
+        for group_info in scheduled_groups:
+            asyncio.create_task(
+                self._run_group_scheduled_summary(
+                    group_info["group_id"],
+                    group_info["schedule_time"],
+                    group_info["interval"]
+                )
+            )
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     @filter.command("消息总结", alias={"省流", "总结一下"})
@@ -77,39 +84,37 @@ class ChatSummary(Star):
         )
         yield event.plain_result(help_text)
 
-    async def _run_scheduled_summaries(self):
-        """后台定时任务，用于每天发送总结"""
+    async def _run_group_scheduled_summary(self, group_id: str, schedule_time_str: str, interval: str):
+        """为单个群组运行定时总结任务"""
+        schedule_time = datetime.strptime(schedule_time_str, "%H:%M").time()
+        
         while True:
+            # 计算下次执行时间
             now = datetime.now()
-            schedule_time_str = self.config.get("scheduled_summary", {}).get(
-                "schedule_time", "22:00"
-            )
-            schedule_time = datetime.strptime(schedule_time_str, "%H:%M").time()
-
             next_run = now.replace(
                 hour=schedule_time.hour,
                 minute=schedule_time.minute,
                 second=0,
                 microsecond=0,
             )
-            if now > next_run:
+            
+            # 如果今天的时间已过，则设置为明天
+            if now >= next_run:
                 next_run += timedelta(days=1)
-
+            
+            # 等待到执行时间
             sleep_seconds = (next_run - now).total_seconds()
+            logger.info(f"群 {group_id} 的定时总结将在 {next_run.strftime('%Y-%m-%d %H:%M:%S')} 执行")
             await asyncio.sleep(sleep_seconds)
-
+            
             # 执行总结任务
-            scheduled_config = self.config.get("scheduled_summary", {})
-            group_ids = scheduled_config.get("group_ids", [])
-            interval = scheduled_config.get("interval", "24h")
-
-            for group_id in group_ids:
-                try:
-                    await self.summary_service.create_and_send_scheduled_summary(
-                        group_id, interval
-                    )
-                except Exception as e:
-                    # 使用 AstrBot 的日志接口记录错误
-                    from astrbot.core import logger
-
-                    logger.error(f"为群 {group_id} 发送定时总结失败: {e}")
+            try:
+                await self.summary_service.create_and_send_scheduled_summary(
+                    group_id, interval
+                )
+                logger.info(f"群 {group_id} 定时总结执行成功")
+            except Exception as e:
+                logger.error(f"为群 {group_id} 发送定时总结失败: {e}")
+            
+            # 等待1分钟，避免在同一分钟内重复执行
+            await asyncio.sleep(60)

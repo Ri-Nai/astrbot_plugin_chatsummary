@@ -49,7 +49,7 @@ class ChatHandler:
         )
 
         try:
-            summary_text = await self.service.get_summary_from_llm(formatted_chat)
+            summary_text = await self.service.get_summary_from_llm(formatted_chat, str(group_id))
             yield event.plain_result(summary_text)
         except Exception:
             yield event.plain_result("抱歉，总结服务出现了一点问题，请稍后再试。")

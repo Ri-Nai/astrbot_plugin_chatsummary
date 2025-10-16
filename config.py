@@ -11,13 +11,14 @@ class PluginConfig:
         self.prompt = "请总结以下聊天记录："
         self.wake_prefix = []
         self._data = {}
+        self._groups = {}  # 存储群组配置
 
         if initial_data is not None:
             self.merge(initial_data)
 
         self._load_from_file(config_file_path)
         self._sync_prompt()
-        self._data.setdefault("scheduled_summary", {})
+        self._parse_groups()
 
     def _load_from_file(self, config_file_path: str) -> None:
         try:
@@ -48,9 +49,41 @@ class PluginConfig:
         prompt_value = self._data.get("prompt", self.prompt)
         self.prompt = str(prompt_value).replace("\\n", "\n")
 
+    def _parse_groups(self) -> None:
+        """解析群组配置"""
+        for key, value in self._data.items():
+            if key.startswith("group") and isinstance(value, dict):
+                group_id = value.get("id")
+                if group_id:
+                    self._groups[str(group_id)] = {
+                        "summary_prompt": value.get("summary_prompt", self.prompt),
+                        "scheduled_summary": value.get("scheduled_summary", {})
+                    }
+
+    def get_group_config(self, group_id: str) -> dict:
+        """获取指定群组的配置"""
+        return self._groups.get(str(group_id), {
+            "summary_prompt": self.prompt,
+            "scheduled_summary": {}
+        })
+
+    def get_all_scheduled_groups(self) -> list:
+        """获取所有启用了定时总结的群组配置"""
+        scheduled_groups = []
+        for group_id, config in self._groups.items():
+            scheduled_config = config.get("scheduled_summary", {})
+            if scheduled_config.get("enabled"):
+                scheduled_groups.append({
+                    "group_id": group_id,
+                    "schedule_time": scheduled_config.get("schedule_time", "22:00"),
+                    "interval": scheduled_config.get("interval", "24h")
+                })
+        return scheduled_groups
+
     def merge(self, data) -> None:
         self._merge_data(data)
         self._sync_prompt()
+        self._parse_groups()
 
     def get(self, key, default=None):
         return self._data.get(key, default)
@@ -73,8 +106,5 @@ def load_config(context, runtime_config=None) -> PluginConfig:
 
     p_config.wake_prefix = main_config.get("wake_prefix", [])
     p_config.merge({"wake_prefix": p_config.wake_prefix})
-
-    if p_config.get("scheduled_summary") is None:
-        p_config.merge({"scheduled_summary": {}})
 
     return p_config

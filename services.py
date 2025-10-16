@@ -134,11 +134,18 @@ class SummaryService:
 
         return all_messages
 
-    async def get_summary_from_llm(self, formatted_chat: str) -> str:
+    async def get_summary_from_llm(self, formatted_chat: str, group_id: str = None) -> str:
         """调用LLM获取总结"""
         try:
+            # 根据群组ID获取对应的提示词
+            if group_id:
+                group_config = self.config.get_group_config(str(group_id))
+                prompt = group_config.get("summary_prompt", self.config.prompt)
+            else:
+                prompt = self.config.prompt
+            
             llm_response = await self.context.get_using_provider().text_chat(
-                prompt=self.config.prompt,
+                prompt=prompt,
                 contexts=[{"role": "user", "content": formatted_chat}],
             )
             return llm_response.completion_text
@@ -188,7 +195,7 @@ class SummaryService:
             )
 
             if not messages:
-                summary = "在过去的一天里，本群没有任何新消息。"
+                summary = "在过去的一段时间里，本群没有任何新消息。"
             else:
                 # 2. 生成总结
                 formatted_chat = self._format_messages(messages, my_id)
@@ -199,22 +206,12 @@ class SummaryService:
                     summary = "筛选后没有可供总结的聊天内容。"
                 else:
                     try:
-                        summary = await self.get_summary_from_llm(formatted_chat)
+                        summary = await self.get_summary_from_llm(formatted_chat, group_id)
                     except Exception as e:
                         logger.error(f"调用LLM失败: {e}")
                         summary = "抱歉，总结服务出现了一点问题。"
 
             # 3. 构建消息链并发送
-            # message_chain = MessageChain(
-            #     [Comp.Plain(text=f"【每日聊天总结】\n\n{summary}")]
-            # )
-
-            # 4. 构建统一消息源 (unified_msg_origin) 以指定发送目标
-            # 格式为 "platform:message_type:session_id"
-            # 假设我们使用的是 aiocqhttp 平台
-            # umo = f"aiocqhttp:group:{group_id}"
-            # await self.context.send_message(umo, message_chain)
-
             payload = {
                 "group_id": group_id,
                 "message": [
