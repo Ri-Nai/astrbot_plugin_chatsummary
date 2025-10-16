@@ -14,6 +14,7 @@ class SummaryService:
     def __init__(self, context, config):
         self.context = context
         self.config = config
+        self.platforms = self.context.platform_manager.get_insts()
 
     async def get_messages_by_arg(
         self, client, group_id: int, arg: str
@@ -164,13 +165,6 @@ class SummaryService:
         生成并发送定时的聊天总结。
         这是一个主动消息发送的例子。
         """
-        from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
-            AiocqhttpAdapter,
-        )  # 其他平台同理
-
-        platform = self.context.get_platform(filter.PlatformAdapterType.AIOCQHTTP)
-        assert isinstance(platform, AiocqhttpAdapter)
-        client = platform.get_client()
 
         try:
             login_info = await client.api.call_action("get_login_info")
@@ -221,4 +215,13 @@ class SummaryService:
             ],
         }
 
-        await client.api.call_action("send_group_msg", **payload)
+        for platform in self.platforms:
+            if (
+                not hasattr(platform, "get_client")
+                or not platform.get_client()
+                or not hasattr(platform.get_client().api, "call_action")
+            ):
+                continue
+
+            client = platform.get_client()
+            await client.api.call_action("send_group_msg", **payload)
