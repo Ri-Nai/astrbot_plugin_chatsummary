@@ -212,19 +212,19 @@ class SummaryService:
                         logger.error(f"调用LLM失败: {e}")
                         summary = "抱歉，总结服务出现了一点问题。"
 
-            # # 3. 构建消息链并发送
-            # payload = {
-            #     "group_id": group_id,
-            #     "message": [
-            #         {"type": "text", "data": {"text": f"【每日聊天总结】\n\n{summary}"}}
-            #     ],
-            # }
+            # 3. 构建消息链并发送
+            payload = {
+                "group_id": group_id,
+                "message": [
+                    {"type": "text", "data": {"text": f"【每日聊天总结】\n\n{summary}"}}
+                ],
+            }
 
-            # await client.api.call_action("send_group_msg", **payload)
-            session_str = f"default:GroupMessage:{group_id}"
-            message_chain = MessageChain().message(summary).use_t2i(True)
-            try:
-                await self.context.send_message(session_str, message_chain)
-                logger.info(f"群 {group_id} 定时总结发送成功")
-            except Exception as e:
-                logger.error(f"发送消息失败: {e}")
+            await client.api.call_action("send_group_msg", **payload)
+            # session_str = f"default:GroupMessage:{group_id}"
+            # message_chain = MessageChain().message(summary).use_t2i(True)
+            # try:
+            #     await self.context.send_message(session_str, message_chain)
+            #     logger.info(f"群 {group_id} 定时总结发送成功")
+            # except Exception as e:
+            #     logger.error(f"发送消息失败: {e}")
