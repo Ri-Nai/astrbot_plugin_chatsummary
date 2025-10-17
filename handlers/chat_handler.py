@@ -71,8 +71,9 @@ class ChatHandler:
             
             summary_text = await self.llm_service.get_summary(formatted_chat, prompt)
             yield event.plain_result(summary_text)
-            
+
             summary_image_url = await HtmlRenderer.render_t2i(summary_text)
             yield event.image_result(summary_image_url)
-        except Exception:
+        except Exception as e:
             yield event.plain_result("抱歉，总结服务出现了一点问题，请稍后再试。")
+            logger.error(f"生成总结失败: {e}")
