@@ -47,7 +47,7 @@ class PluginConfig:
 
     def _sync_prompt(self) -> None:
         # 先获取 default_prompt，如果没有则使用内置默认值
-        default_prompt_value = self._data.get("default_prompt", self.prompt)
+        default_prompt_value = self._data.get("default_prompt", self.default_prompt)
         self.default_prompt = str(default_prompt_value).replace("\\n", "\n")
         
     def _parse_groups(self) -> None:
@@ -96,7 +96,7 @@ class PluginConfig:
 
     def to_dict(self) -> dict:
         merged = dict(self._data)
-        merged["prompt"] = self.prompt
+        merged["default_prompt"] = self.default_prompt
         merged["wake_prefix"] = self.wake_prefix
         return merged
 
