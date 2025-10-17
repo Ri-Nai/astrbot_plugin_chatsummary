@@ -1,6 +1,7 @@
 # /astrbot_plugin_chatsummary/handlers/chat_handler.py
 
 from astrbot.api.event import AstrMessageEvent
+from astrbot.core import HtmlRenderer
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
     AiocqhttpMessageEvent,
 )
@@ -70,5 +71,8 @@ class ChatHandler:
             
             summary_text = await self.llm_service.get_summary(formatted_chat, prompt)
             yield event.plain_result(summary_text)
+            
+            summary_image_url = await HtmlRenderer.render_t2i(summary_text)
+            yield event.image_result(summary_image_url)
         except Exception:
             yield event.plain_result("抱歉，总结服务出现了一点问题，请稍后再试。")
