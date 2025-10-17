@@ -154,9 +154,6 @@ class SummaryService:
             if breakFlag:
                 break
 
-            if len(messages) < 100:
-                break
-
         return all_messages
 
     async def get_messages_by_count(self, client, group_id: int, count: int) -> list:
