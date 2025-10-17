@@ -3,7 +3,7 @@
 import asyncio
 from datetime import datetime, timedelta
 from astrbot.api import logger
-from astrbot.core import HtmlRenderer
+from astrbot.core import html_render
 from ..utils import parse_time_delta
 from .summary_service import SummaryService
 from .llm_service import LLMService
@@ -136,7 +136,7 @@ class SchedulerService:
                     except Exception as e:
                         logger.error(f"调用LLM失败: {e}")
                         summary = "抱歉，总结服务出现了一点问题。"
-            summary_image_url = await HtmlRenderer.render_t2i(summary)
+            summary_image_url = await html_render.render_t2i(summary)
             # 4. 构建消息并发送
             payload = {
                 "group_id": group_id,
