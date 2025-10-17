@@ -9,6 +9,7 @@ from astrbot.core import logger
 class PluginConfig:
     def __init__(self, config_file_path: str, initial_data=None):
         self.default_prompt = "请总结以下聊天记录："
+        self.default_html_template = "base"  # 默认HTML渲染模板
         self.wake_prefix = []
         self._data = {}
         self._groups = {}  # 存储群组配置
@@ -61,8 +62,14 @@ class PluginConfig:
                     if not group_prompt:
                         group_prompt = self.default_prompt
                     
+                    # 如果群组没有配置 html_renderer_template，使用 default_html_template
+                    html_template = value.get("html_renderer_template")
+                    if not html_template:
+                        html_template = self.default_html_template
+                    
                     self._groups[str(group_id)] = {
                         "summary_prompt": group_prompt,
+                        "html_renderer_template": html_template,
                         "scheduled_summary": value.get("scheduled_summary", {})
                     }
 
@@ -70,6 +77,7 @@ class PluginConfig:
         """获取指定群组的配置"""
         return self._groups.get(str(group_id), {
             "summary_prompt": self.default_prompt,
+            "html_renderer_template": self.default_html_template,
             "scheduled_summary": {}
         })
 
@@ -97,6 +105,7 @@ class PluginConfig:
     def to_dict(self) -> dict:
         merged = dict(self._data)
         merged["default_prompt"] = self.default_prompt
+        merged["default_html_template"] = self.default_html_template
         merged["wake_prefix"] = self.wake_prefix
         return merged
 

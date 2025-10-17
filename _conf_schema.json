@@ -19,6 +19,12 @@
         "type": "string",
         "hint": "在此填写LLM提示词"
       },
+      "html_renderer_template": {
+        "description": "HTML渲染模板",
+        "type": "string",
+        "hint": "在此填写HTML渲染模板",
+        "default": "base"
+      },
       "scheduled_summary": {
         "description": "定时总结配置",
         "type": "object",
@@ -56,6 +62,12 @@
         "type": "string",
         "hint": "在此填写LLM提示词"
       },
+      "html_renderer_template": {
+        "description": "HTML渲染模板",
+        "type": "string",
+        "hint": "在此填写HTML渲染模板",
+        "default": "base"
+      },
       "scheduled_summary": {
         "description": "定时总结配置",
         "type": "object",
@@ -92,6 +104,12 @@
         "description": "总结提示词",
         "type": "string",
         "hint": "在此填写LLM提示词"
+      },
+      "html_renderer_template": {
+        "description": "HTML渲染模板",
+        "type": "string",
+        "hint": "在此填写HTML渲染模板",
+        "default": "base"
       },
       "scheduled_summary": {
         "description": "定时总结配置",
