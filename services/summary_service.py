@@ -1,24 +1,30 @@
-# /astrbot_plugin_chatsummary/services.py
+# /astrbot_plugin_chatsummary/services/summary_service.py
 
 import json
 from datetime import datetime, timedelta
 from astrbot.api import logger
-from astrbot.api.event import MessageChain
-from .utils import parse_time_delta
-
+from ..utils import parse_time_delta
 
 
 class SummaryService:
-    def __init__(self, context, config):
-        self.context = context
+    """消息总结服务：负责获取、格式化和总结聊天消息"""
+    
+    def __init__(self, config):
         self.config = config
-        self.platforms = self.context.platform_manager.get_insts()
 
     async def get_messages_by_arg(
         self, client, group_id: int, arg: str
     ) -> tuple[list | None, str]:
         """
         根据参数获取消息，返回消息列表和一条状态消息。
+        
+        Args:
+            client: 平台客户端
+            group_id: 群组ID
+            arg: 参数（数量或时间）
+            
+        Returns:
+            (消息列表, 状态消息)
         """
         time_delta = parse_time_delta(arg)
 
@@ -26,7 +32,7 @@ class SummaryService:
             status_message = (
                 f"正在为您总结群 {group_id} 过去 {arg} 内的聊天记录，请稍候..."
             )
-            messages = await self._get_messages_by_time(client, group_id, time_delta)
+            messages = await self.get_messages_by_time(client, group_id, time_delta)
             return messages, status_message
         elif arg.isdigit():
             count = int(arg)
@@ -43,8 +49,17 @@ class SummaryService:
                 "参数格式不正确哦~\n请使用如「 /消息总结 30 」(数量) 或「 /消息总结 1h30m 」(时间) 的格式。",
             )
 
-    def _format_messages(self, messages: list, my_id: int) -> str:
-        """将从API获取的消息列表格式化为文本"""
+    def format_messages(self, messages: list, my_id: int) -> str:
+        """
+        将从API获取的消息列表格式化为文本
+        
+        Args:
+            messages: 消息列表
+            my_id: 机器人自己的ID
+            
+        Returns:
+            格式化后的聊天文本
+        """
         chat_lines = []
         for msg in reversed(messages):
             sender = msg.get("sender", {})
@@ -85,12 +100,21 @@ class SummaryService:
 
         return "\n".join(chat_lines)
 
-    async def _get_messages_by_time(
+    async def get_messages_by_time(
         self, client, group_id: int, time_delta: timedelta
     ) -> list:
-        """通过渐进式拉取的方式获取指定时间范围内的消息"""
+        """
+        通过渐进式拉取的方式获取指定时间范围内的消息
+        
+        Args:
+            client: 平台客户端
+            group_id: 群组ID
+            time_delta: 时间范围
+            
+        Returns:
+            消息列表
+        """
         target_start_time = datetime.now() - time_delta
-
         logger.info(f"目标开始时间: {target_start_time}")
 
         all_messages = []
@@ -112,7 +136,8 @@ class SummaryService:
                 break
 
             if not messages:
-                break  # 没有更多消息了
+                break
+            
             breakFlag = False
             messages = messages[::-1]
             for msg in messages:
@@ -129,33 +154,23 @@ class SummaryService:
             if breakFlag:
                 break
 
-            # 如果拉取到的消息不足一批，说明已经到头了
             if len(messages) < 100:
                 break
 
         return all_messages
 
-    async def get_summary_from_llm(self, formatted_chat: str, group_id: str = None) -> str:
-        """调用LLM获取总结"""
-        try:
-            # 根据群组ID获取对应的提示词
-            if group_id:
-                group_config = self.config.get_group_config(str(group_id))
-                prompt = group_config.get("summary_prompt", self.config.prompt)
-            else:
-                prompt = self.config.prompt
-            
-            llm_response = await self.context.get_using_provider().text_chat(
-                prompt=prompt,
-                contexts=[{"role": "user", "content": formatted_chat}],
-            )
-            return llm_response.completion_text
-        except Exception as e:
-            logger.error(f"调用LLM服务失败: {e}")
-            raise  # 抛出异常由 handler 处理
-
     async def get_messages_by_count(self, client, group_id: int, count: int) -> list:
-        """按数量获取消息"""
+        """
+        按数量获取消息
+        
+        Args:
+            client: 平台客户端
+            group_id: 群组ID
+            count: 消息数量
+            
+        Returns:
+            消息列表
+        """
         try:
             ret = await client.api.call_action(
                 "get_group_msg_history", group_id=group_id, count=count
@@ -164,67 +179,3 @@ class SummaryService:
         except Exception as e:
             logger.error(f"获取群聊 {group_id} 历史消息失败: {e}")
             return []
-
-    async def create_and_send_scheduled_summary(self, group_id: str, interval: str):
-        """
-        生成并发送定时的聊天总结。
-        这是一个主动消息发送的例子。
-        """
-        for platform in self.platforms:
-            if (
-                not hasattr(platform, "get_client")
-                or not platform.get_client()
-                or not hasattr(platform.get_client().api, "call_action")
-            ):
-                continue
-            client = platform.get_client()
-
-            try:
-                login_info = await client.api.call_action("get_login_info")
-                my_id = login_info.get("user_id")
-            except Exception as e:
-                logger.error(f"获取登录信息失败: {e}")
-                return
-
-            # 1. 获取消息记录
-            time_delta = parse_time_delta(interval)
-            if not time_delta:
-                logger.error(f"无效的时间间隔: {interval}")
-                return
-            messages = await self._get_messages_by_time(
-                client, int(group_id), time_delta
-            )
-
-            if not messages:
-                summary = "在过去的一段时间里，本群没有任何新消息。"
-            else:
-                # 2. 生成总结
-                formatted_chat = self._format_messages(messages, my_id)
-                logger.info(
-                    f"定时总结: group_id={group_id} msg_length={len(formatted_chat)} content:\n{formatted_chat}"
-                )
-                if not formatted_chat:
-                    summary = "筛选后没有可供总结的聊天内容。"
-                else:
-                    try:
-                        summary = await self.get_summary_from_llm(formatted_chat, group_id)
-                    except Exception as e:
-                        logger.error(f"调用LLM失败: {e}")
-                        summary = "抱歉，总结服务出现了一点问题。"
-
-            # 3. 构建消息链并发送
-            payload = {
-                "group_id": group_id,
-                "message": [
-                    {"type": "text", "data": {"text": f"【每日聊天总结】\n\n{summary}"}}
-                ],
-            }
-
-            await client.api.call_action("send_group_msg", **payload)
-            # session_str = f"default:GroupMessage:{group_id}"
-            # message_chain = MessageChain().message(summary).use_t2i(True)
-            # try:
-            #     await self.context.send_message(session_str, message_chain)
-            #     logger.info(f"群 {group_id} 定时总结发送成功")
-            # except Exception as e:
-            #     logger.error(f"发送消息失败: {e}")

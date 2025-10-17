@@ -1,27 +1,39 @@
-# /astrbot_plugin_chatsummary/handlers.py
+# /astrbot_plugin_chatsummary/handlers/chat_handler.py
 
 from astrbot.api.event import AstrMessageEvent
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
     AiocqhttpMessageEvent,
 )
 from astrbot.core import logger
-from .services import SummaryService
-from .utils import parse_time_delta
+from ..services import SummaryService, LLMService
 
 
 class ChatHandler:
-    def __init__(self, context, config, service: SummaryService):
-        self.context = context
+    """聊天处理器：负责处理用户的总结请求"""
+    
+    def __init__(self, config, summary_service: SummaryService, llm_service: LLMService):
         self.config = config
-        self.service = service
+        self.summary_service = summary_service
+        self.llm_service = llm_service
 
     async def process_summary_request(
         self, event: AstrMessageEvent, group_id: int, arg: str
     ):
-        """处理总结逻辑的通用函数"""
+        """
+        处理总结请求的通用函数
+        
+        Args:
+            event: 消息事件
+            group_id: 群组ID
+            arg: 参数（数量或时间）
+            
+        Yields:
+            处理结果消息
+        """
         client = event.bot
         assert isinstance(event, AiocqhttpMessageEvent)
 
+        # 获取Bot信息
         try:
             login_info = await client.api.call_action("get_login_info")
             my_id = login_info.get("user_id")
@@ -30,7 +42,8 @@ class ChatHandler:
             yield event.plain_result("抱歉，获取Bot信息失败，无法继续操作。")
             return
 
-        messages, status_message = await self.service.get_messages_by_arg(
+        # 获取消息列表
+        messages, status_message = await self.summary_service.get_messages_by_arg(
             client, group_id, arg
         )
         yield event.plain_result(status_message)
@@ -39,7 +52,8 @@ class ChatHandler:
             yield event.plain_result("在指定范围内没有找到可以总结的聊天记录。")
             return
 
-        formatted_chat = self.service._format_messages(messages, my_id)
+        # 格式化消息
+        formatted_chat = self.summary_service.format_messages(messages, my_id)
         if not formatted_chat:
             yield event.plain_result("筛选后没有可供总结的聊天内容。")
             return
@@ -48,8 +62,13 @@ class ChatHandler:
             f"chat_summary: group_id={group_id} a_param={arg} msg_length={len(formatted_chat)} content:\n{formatted_chat}"
         )
 
+        # 调用LLM生成总结
         try:
-            summary_text = await self.service.get_summary_from_llm(formatted_chat, str(group_id))
+            # 获取群组配置的提示词
+            group_config = self.config.get_group_config(str(group_id))
+            prompt = group_config.get("summary_prompt", self.config.default_prompt)
+            
+            summary_text = await self.llm_service.get_summary(formatted_chat, prompt)
             yield event.plain_result(summary_text)
         except Exception:
             yield event.plain_result("抱歉，总结服务出现了一点问题，请稍后再试。")
