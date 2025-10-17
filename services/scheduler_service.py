@@ -2,8 +2,7 @@
 
 import asyncio
 from datetime import datetime, timedelta
-from astrbot.api import logger
-from astrbot.core import html_render
+from astrbot.api import logger, html_render
 from ..utils import parse_time_delta
 from .summary_service import SummaryService
 from .llm_service import LLMService
@@ -141,8 +140,11 @@ class SchedulerService:
             payload = {
                 "group_id": group_id,
                 "message": [
-                    {"type": "text", "data": {"text": f"【每日聊天总结】\n\n{summary}"}},
-                    {"type": "image", "data": {"file": summary_image_url}}
+                    {
+                        "type": "text",
+                        "data": {"text": f"【每日聊天总结】\n\n{summary}"},
+                    },
+                    {"type": "image", "data": {"file": summary_image_url}},
                 ],
             }
 

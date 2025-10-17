@@ -1,7 +1,7 @@
 # /astrbot_plugin_chatsummary/handlers/chat_handler.py
 
+from astrbot.api import html_render
 from astrbot.api.event import AstrMessageEvent
-from astrbot.core import html_render
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
     AiocqhttpMessageEvent,
 )
@@ -11,8 +11,10 @@ from ..services import SummaryService, LLMService
 
 class ChatHandler:
     """聊天处理器：负责处理用户的总结请求"""
-    
-    def __init__(self, config, summary_service: SummaryService, llm_service: LLMService):
+
+    def __init__(
+        self, config, summary_service: SummaryService, llm_service: LLMService
+    ):
         self.config = config
         self.summary_service = summary_service
         self.llm_service = llm_service
@@ -22,12 +24,12 @@ class ChatHandler:
     ):
         """
         处理总结请求的通用函数
-        
+
         Args:
             event: 消息事件
             group_id: 群组ID
             arg: 参数（数量或时间）
-            
+
         Yields:
             处理结果消息
         """
@@ -68,7 +70,7 @@ class ChatHandler:
             # 获取群组配置的提示词
             group_config = self.config.get_group_config(str(group_id))
             prompt = group_config.get("summary_prompt", self.config.default_prompt)
-            
+
             summary_text = await self.llm_service.get_summary(formatted_chat, prompt)
             yield event.plain_result(summary_text)
 
