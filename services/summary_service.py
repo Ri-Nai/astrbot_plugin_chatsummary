@@ -8,7 +8,7 @@ from ..utils import parse_time_delta
 
 class SummaryService:
     """消息总结服务：负责获取、格式化和总结聊天消息"""
-    
+
     def __init__(self, config):
         self.config = config
 
@@ -17,12 +17,12 @@ class SummaryService:
     ) -> tuple[list | None, str]:
         """
         根据参数获取消息，返回消息列表和一条状态消息。
-        
+
         Args:
             client: 平台客户端
             group_id: 群组ID
             arg: 参数（数量或时间）
-            
+
         Returns:
             (消息列表, 状态消息)
         """
@@ -49,14 +49,14 @@ class SummaryService:
                 "参数格式不正确哦~\n请使用如「 /消息总结 30 」(数量) 或「 /消息总结 1h30m 」(时间) 的格式。",
             )
 
-    def format_messages(self, messages: list, my_id: int) -> str:
+    def format_messages(self, messages: list, my_id: int, indent: int = 0) -> str:
         """
         将从API获取的消息列表格式化为文本
-        
+
         Args:
             messages: 消息列表
             my_id: 机器人自己的ID
-            
+
         Returns:
             格式化后的聊天文本
         """
@@ -65,13 +65,12 @@ class SummaryService:
             sender = msg.get("sender", {})
             if my_id == sender.get("user_id"):
                 continue
-
-            nickname = sender.get("nickname", "未知用户")
-            msg_time = datetime.fromtimestamp(msg.get("time", 0))
-            message_text = ""
-
             if not isinstance(msg.get("message"), list):
                 continue
+
+            nickname = sender.get("card", sender.get("nickname", "未知用户"))
+            msg_time = datetime.fromtimestamp(msg.get("time", 0))
+            message_text = ""
 
             for part in msg["message"]:
                 if part.get("type") == "text":
@@ -86,6 +85,11 @@ class SummaryService:
                         pass
                 elif part.get("type") == "face":
                     message_text += "[表情] "
+                elif part.get("type") == "forward":
+                    message_text += "[转发消息]: \n"
+                    forward_msg_list = part.get("data", {}).get("content", [])
+                    formatted_forward = self.format_messages(forward_msg_list, my_id, indent + 2)
+                    message_text += formatted_forward + " "
 
             if any(
                 message_text.strip().startswith(prefix)
@@ -95,7 +99,7 @@ class SummaryService:
 
             if message_text.strip():
                 chat_lines.append(
-                    f"[{msg_time.strftime('%Y-%m-%d %H:%M:%S')}]「{nickname}」: {message_text.strip()}"
+                    f"{' ' * indent}[{msg_time.strftime('%Y-%m-%d %H:%M:%S')}]「{nickname}」: {message_text.strip()}"
                 )
 
         return "\n".join(chat_lines)
@@ -105,12 +109,12 @@ class SummaryService:
     ) -> list:
         """
         通过渐进式拉取的方式获取指定时间范围内的消息
-        
+
         Args:
             client: 平台客户端
             group_id: 群组ID
             time_delta: 时间范围
-            
+
         Returns:
             消息列表
         """
@@ -137,7 +141,7 @@ class SummaryService:
 
             if not messages:
                 break
-            
+
             breakFlag = False
             messages = messages[::-1]
             for msg in messages:
@@ -159,12 +163,12 @@ class SummaryService:
     async def get_messages_by_count(self, client, group_id: int, count: int) -> list:
         """
         按数量获取消息
-        
+
         Args:
             client: 平台客户端
             group_id: 群组ID
             count: 消息数量
-            
+
         Returns:
             消息列表
         """
