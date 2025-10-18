@@ -68,7 +68,9 @@ class SummaryService:
             if not isinstance(msg.get("message"), list):
                 continue
 
-            nickname = sender.get("card", sender.get("nickname", "未知用户"))
+            nickname = sender.get("card")
+            if not nickname:
+                nickname = sender.get("nickname", "未知用户")
             msg_time = datetime.fromtimestamp(msg.get("time", 0))
             message_text = ""
 
