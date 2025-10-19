@@ -114,7 +114,7 @@ class SummaryService:
                         my_id,
                         indent + 2,
                     )
-                    message_text += formatted_forward + indent_str + "\n}"
+                    message_text += formatted_forward + "\n" + indent_str + "}"
 
             if any(
                 message_text.strip().startswith(prefix)
