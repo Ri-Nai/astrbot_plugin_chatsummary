@@ -176,7 +176,10 @@ class SummaryService:
         """
         try:
             ret = await client.api.call_action(
-                "get_group_msg_history", group_id=group_id, count=count
+                "get_group_msg_history",
+                group_id=group_id,
+                count=count,
+                reverseOrder=True,
             )
             return ret.get("messages", [])
         except Exception as e:
