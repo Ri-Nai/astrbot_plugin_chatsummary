@@ -102,14 +102,20 @@ class SummaryService:
                 elif part.get("type") == "face":
                     message_text += "[表情] "
                 elif part.get("type") == "forward":
-                    message_text += "[转发消息]: \n{\n"
+                    indent_str = " " * indent
+                    message_text += (
+                        "[转发消息]: \n"
+                        f"{indent_str}"  # 缩进
+                        "{\n"
+                    )
+
                     forward_msg_list = part.get("data", {}).get("content", [])
                     formatted_forward = self.format_messages(
                         forward_msg_list,
                         my_id,
                         indent + 2,
                     )
-                    message_text += formatted_forward + "\n}"
+                    message_text += formatted_forward + indent_str + "\n}"
 
             if any(
                 message_text.strip().startswith(prefix)
@@ -119,7 +125,12 @@ class SummaryService:
 
             if message_text.strip():
                 chat_lines.append(
-                    f"{' ' * indent}[{msg_time.strftime('%Y-%m-%d %H:%M:%S')}]「{nickname}」: {message_text.strip()}"
+                    (
+                        f"{indent_str}"
+                        f"[{msg_time.strftime('%Y-%m-%d %H:%M:%S')}]"
+                        f"「{nickname}」: "
+                        f"{message_text.strip()}"
+                    )
                 )
 
         return "\n".join(chat_lines)
