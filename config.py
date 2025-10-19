@@ -7,7 +7,11 @@ from astrbot.core import logger
 
 
 class PluginConfig:
-    def __init__(self, config_file_path: str, initial_data=None):
+    def __init__(
+        self,
+        config_file_path: str,
+        initial_data=None,
+    ):
         self.default_prompt = "请总结以下聊天记录："
         self.default_html_template = "base"  # 默认HTML渲染模板
         self.wake_prefix = []
@@ -50,7 +54,7 @@ class PluginConfig:
         # 先获取 default_prompt，如果没有则使用内置默认值
         default_prompt_value = self._data.get("default_prompt", self.default_prompt)
         self.default_prompt = str(default_prompt_value).replace("\\n", "\n")
-        
+
     def _parse_groups(self) -> None:
         """解析群组配置"""
         for key, value in self._data.items():
@@ -61,25 +65,28 @@ class PluginConfig:
                     group_prompt = value.get("summary_prompt")
                     if not group_prompt:
                         group_prompt = self.default_prompt
-                    
+
                     # 如果群组没有配置 html_renderer_template，使用 default_html_template
                     html_template = value.get("html_renderer_template")
                     if not html_template:
                         html_template = self.default_html_template
-                    
+
                     self._groups[str(group_id)] = {
                         "summary_prompt": group_prompt,
                         "html_renderer_template": html_template,
-                        "scheduled_summary": value.get("scheduled_summary", {})
+                        "scheduled_summary": value.get("scheduled_summary", {}),
                     }
 
     def get_group_config(self, group_id: str) -> dict:
         """获取指定群组的配置"""
-        return self._groups.get(str(group_id), {
-            "summary_prompt": self.default_prompt,
-            "html_renderer_template": self.default_html_template,
-            "scheduled_summary": {}
-        })
+        return self._groups.get(
+            str(group_id),
+            {
+                "summary_prompt": self.default_prompt,
+                "html_renderer_template": self.default_html_template,
+                "scheduled_summary": {},
+            },
+        )
 
     def get_all_scheduled_groups(self) -> list:
         """获取所有启用了定时总结的群组配置"""
@@ -87,11 +94,13 @@ class PluginConfig:
         for group_id, config in self._groups.items():
             scheduled_config = config.get("scheduled_summary", {})
             if scheduled_config.get("enabled"):
-                scheduled_groups.append({
-                    "group_id": group_id,
-                    "schedule_time": scheduled_config.get("schedule_time", "22:00"),
-                    "interval": scheduled_config.get("interval", "24h")
-                })
+                scheduled_groups.append(
+                    {
+                        "group_id": group_id,
+                        "schedule_time": scheduled_config.get("schedule_time", "22:00"),
+                        "interval": scheduled_config.get("interval", "24h"),
+                    }
+                )
         return scheduled_groups
 
     def merge(self, data) -> None:

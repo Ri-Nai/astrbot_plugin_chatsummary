@@ -13,14 +13,20 @@ class ChatHandler:
     """聊天处理器：负责处理用户的总结请求"""
 
     def __init__(
-        self, config, summary_service: SummaryService, llm_service: LLMService
+        self,
+        config,
+        summary_service: SummaryService,
+        llm_service: LLMService,
     ):
         self.config = config
         self.summary_service = summary_service
         self.llm_service = llm_service
 
     async def process_summary_request(
-        self, event: AstrMessageEvent, group_id: int, arg: str
+        self,
+        event: AstrMessageEvent,
+        group_id: int,
+        arg: str,
     ):
         """
         处理总结请求的通用函数
@@ -47,7 +53,9 @@ class ChatHandler:
 
         # 获取消息列表
         messages, status_message = await self.summary_service.get_messages_by_arg(
-            client, group_id, arg
+            client,
+            group_id,
+            arg,
         )
         yield event.plain_result(status_message)
 
@@ -70,12 +78,18 @@ class ChatHandler:
             # 获取群组配置的提示词和HTML模板
             group_config = self.config.get_group_config(str(group_id))
             prompt = group_config.get("summary_prompt", self.config.default_prompt)
-            html_template = group_config.get("html_renderer_template", self.config.default_html_template)
+            html_template = group_config.get(
+                "html_renderer_template",
+                self.config.default_html_template,
+            )
 
             summary_text = await self.llm_service.get_summary(formatted_chat, prompt)
             yield event.plain_result(summary_text)
 
-            summary_image_url = await html_renderer.render_t2i(summary_text, template_name=html_template)
+            summary_image_url = await html_renderer.render_t2i(
+                summary_text,
+                template_name=html_template,
+            )
             yield event.image_result(summary_image_url)
         except Exception as e:
             yield event.plain_result("抱歉，总结服务出现了一点问题，请稍后再试。")

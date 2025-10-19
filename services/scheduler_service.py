@@ -127,13 +127,16 @@ class SchedulerService:
                         # 3. 获取提示词、HTML模板并生成总结
                         group_config = self.config.get_group_config(str(group_id))
                         prompt = group_config.get(
-                            "summary_prompt", self.config.default_prompt
+                            "summary_prompt",
+                            self.config.default_prompt,
                         )
                         html_template = group_config.get(
-                            "html_renderer_template", self.config.default_html_template
+                            "html_renderer_template",
+                            self.config.default_html_template,
                         )
                         summary = await self.llm_service.get_summary(
-                            formatted_chat, prompt
+                            formatted_chat,
+                            prompt,
                         )
                     except Exception as e:
                         logger.error(f"调用LLM失败: {e}")
@@ -151,7 +154,10 @@ class SchedulerService:
                         "type": "text",
                         "data": {"text": f"【每日聊天总结】\n\n{summary}"},
                     },
-                    {"type": "image", "data": {"file": summary_image_url}},
+                    {
+                        "type": "image",
+                        "data": {"file": summary_image_url},
+                    },
                 ],
             }
 

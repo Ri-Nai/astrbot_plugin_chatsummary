@@ -9,11 +9,17 @@ from ..utils import parse_time_delta
 class SummaryService:
     """消息总结服务：负责获取、格式化和总结聊天消息"""
 
-    def __init__(self, config):
+    def __init__(
+        self,
+        config,
+    ):
         self.config = config
 
     async def get_messages_by_arg(
-        self, client, group_id: int, arg: str
+        self,
+        client,
+        group_id: int,
+        arg: str,
     ) -> tuple[list | None, str]:
         """
         根据参数获取消息，返回消息列表和一条状态消息。
@@ -32,7 +38,11 @@ class SummaryService:
             status_message = (
                 f"正在为您总结群 {group_id} 过去 {arg} 内的聊天记录，请稍候..."
             )
-            messages = await self.get_messages_by_time(client, group_id, time_delta)
+            messages = await self.get_messages_by_time(
+                client,
+                group_id,
+                time_delta,
+            )
             return messages, status_message
         elif arg.isdigit():
             count = int(arg)
@@ -41,7 +51,11 @@ class SummaryService:
             status_message = (
                 f"正在为您总结群 {group_id} 最近 {count} 条聊天记录，请稍候..."
             )
-            messages = await self.get_messages_by_count(client, group_id, count)
+            messages = await self.get_messages_by_count(
+                client,
+                group_id,
+                count,
+            )
             return messages, status_message
         else:
             return (
@@ -90,7 +104,11 @@ class SummaryService:
                 elif part.get("type") == "forward":
                     message_text += "[转发消息]: \n"
                     forward_msg_list = part.get("data", {}).get("content", [])
-                    formatted_forward = self.format_messages(forward_msg_list, my_id, indent + 2)
+                    formatted_forward = self.format_messages(
+                        forward_msg_list,
+                        my_id,
+                        indent + 2,
+                    )
                     message_text += formatted_forward + " "
 
             if any(
@@ -162,7 +180,12 @@ class SummaryService:
 
         return all_messages
 
-    async def get_messages_by_count(self, client, group_id: int, count: int) -> list:
+    async def get_messages_by_count(
+        self,
+        client,
+        group_id: int,
+        count: int,
+    ) -> list:
         """
         按数量获取消息
 
