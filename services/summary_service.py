@@ -115,14 +115,18 @@ class SummaryService:
                         indent + 2,
                     )
                     message_text += formatted_forward + "\n" + indent_str + "}"
+            pure_text = message_text.strip()
+            for prefix in self.config.wake_prefix:
+                if pure_text.startswith(f"{prefix}image"):
+                    pure_text = pure_text[len(f"{prefix}image") :].strip()
 
             if any(
-                message_text.strip().startswith(prefix)
+                pure_text.startswith(prefix)
                 for prefix in self.config.wake_prefix
             ):
                 continue
 
-            if message_text.strip():
+            if pure_text:
                 chat_lines.append(
                     (
                         f"{indent_str}"
@@ -173,7 +177,7 @@ class SummaryService:
                 break
 
             breakFlag = False
-            messages = messages[::-1]
+            messages = reversed(messages)
             for msg in messages:
                 msg_seq = msg.get("message_seq")
                 if msg_seq == last_msg_seq and last_msg_seq != 0:
