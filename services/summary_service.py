@@ -102,14 +102,14 @@ class SummaryService:
                 elif part.get("type") == "face":
                     message_text += "[表情] "
                 elif part.get("type") == "forward":
-                    message_text += "[转发消息]: \n"
+                    message_text += "[转发消息]: \n{\n"
                     forward_msg_list = part.get("data", {}).get("content", [])
                     formatted_forward = self.format_messages(
                         forward_msg_list,
                         my_id,
                         indent + 2,
                     )
-                    message_text += formatted_forward + " "
+                    message_text += formatted_forward + "\n}"
 
             if any(
                 message_text.strip().startswith(prefix)
