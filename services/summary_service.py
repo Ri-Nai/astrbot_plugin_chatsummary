@@ -132,7 +132,7 @@ class SummaryService:
                         f"{indent_str}"
                         f"[{msg_time.strftime('%Y-%m-%d %H:%M:%S')}]"
                         f"「{nickname}」: "
-                        f"{message_text.strip()}"
+                        f"{pure_text.strip()}"
                     )
                 )
 
