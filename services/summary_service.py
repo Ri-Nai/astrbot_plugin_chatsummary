@@ -75,7 +75,7 @@ class SummaryService:
             格式化后的聊天文本
         """
         chat_lines = []
-        for msg in reversed(messages):
+        for msg in messages:
             sender = msg.get("sender", {})
             if my_id == sender.get("user_id"):
                 continue
@@ -178,7 +178,7 @@ class SummaryService:
             if breakFlag:
                 break
 
-        return all_messages
+        return reversed(all_messages)
 
     async def get_messages_by_count(
         self,
@@ -202,7 +202,6 @@ class SummaryService:
                 "get_group_msg_history",
                 group_id=group_id,
                 count=count,
-                reverseOrder=True,
             )
             return ret.get("messages", [])
         except Exception as e:
