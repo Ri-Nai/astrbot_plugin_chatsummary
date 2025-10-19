@@ -87,7 +87,7 @@ class SummaryService:
                 nickname = sender.get("nickname", "未知用户")
             msg_time = datetime.fromtimestamp(msg.get("time", 0))
             message_text = ""
-
+            indent_str = " " * indent
             for part in msg["message"]:
                 if part.get("type") == "text":
                     message_text += part.get("data", {}).get("text", "").strip() + " "
@@ -102,7 +102,6 @@ class SummaryService:
                 elif part.get("type") == "face":
                     message_text += "[表情] "
                 elif part.get("type") == "forward":
-                    indent_str = " " * indent
                     message_text += (
                         "[转发消息]: \n"
                         f"{indent_str}"  # 缩进
