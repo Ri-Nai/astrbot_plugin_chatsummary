@@ -160,7 +160,7 @@ class SchedulerService:
                     "type": "node",
                     "data": {
                         "user_id": my_id,
-                        "nickname": my_name,
+                        "nickname": "AstrBot",
                         "content": [
                             {
                                 "type": "text",
