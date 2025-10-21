@@ -104,6 +104,7 @@ class SchedulerService:
         try:
             login_info = await client.api.call_action("get_login_info")
             my_id = login_info.get("user_id")
+            my_name = login_info.get("nickname")
         except Exception as e:
             logger.error(f"获取登录信息失败: {e}")
             return
@@ -152,13 +153,27 @@ class SchedulerService:
             template_name=html_template,
         )
         # 4. 构建消息并发送
-        payload = {
+        text_payload = {
             "group_id": group_id,
             "message": [
                 {
-                    "type": "text",
-                    "data": {"text": f"【每日聊天总结】\n\n{summary}"},
-                },
+                    "type": "node",
+                    "data": {
+                        "user_id": my_id,
+                        "nickname": my_name,
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"【每日聊天总结】\n\n{summary}",
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+        image_payload = {
+            "group_id": group_id,
+            "message": [
                 {
                     "type": "image",
                     "data": {"file": summary_image_url},
@@ -166,7 +181,8 @@ class SchedulerService:
             ],
         }
 
-        await client.api.call_action("send_group_msg", **payload)
+        await client.api.call_action("send_group_forward_msg", **text_payload)
+        await client.api.call_action("send_group_msg", **image_payload)
 
     async def stop_all_tasks(self):
         """停止所有定时任务"""
