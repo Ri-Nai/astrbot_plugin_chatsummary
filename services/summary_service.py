@@ -241,7 +241,7 @@ class SummaryService:
                     is_wake_message = True
                     break
 
-            if is_wake_message and not self.config.include_wake_messages: # 假设有一个配置项来决定是否包含唤醒消息
+            if is_wake_message:
                  continue # 如果是唤醒消息且配置为不包含，则跳过
 
             # 只有当消息内容不为空时才添加
