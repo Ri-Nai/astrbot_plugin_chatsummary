@@ -51,9 +51,11 @@ class SummaryService:
                 # 注意：这里的开头 "[转发消息]:" 不加缩进，因为它将拼接在主消息行后面
                 return (
                     "[转发消息]:\n"
-                    f"{' ' * indent}{{\n"
+                    f"{' ' * indent}"
+                    "\{\n"
                     f"{'\n'.join(chat_lines)}\n"
-                    f"{' ' * indent}}}"
+                    f"{' ' * indent}"
+                    "\}"
                 )
 
             # --- 适配类型2: QQ小程序分享 ---
