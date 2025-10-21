@@ -31,22 +31,7 @@ class MessageFormatter:
         elif part_type == "face":
             return "[表情]"
         elif part_type == "reply":
-            replied_id = data.get("id")
-            logger.info(f"处理回复消息，replied_id={replied_id}")
-            if replied_id:
-                # 尝试查找被回复的消息
-                replied_message = next((msg for msg in messages if int(msg.get("message_id")) == int(replied_id)), None)
-                if replied_message and isinstance(replied_message.get("message"), list):
-                    # 如果找到了，递归格式化被回复消息的内容
-                    replied_text = "".join(
-                        self._format_message_part(my_id, p, messages, 0)
-                        for p in replied_message["message"]
-                        if p.get("type") in ["text", "image", "video", "face"] # 只展示部分类型以避免无限递归或过于冗长
-                    ).strip()
-                    if len(replied_text) > 20:
-                        replied_text = replied_text[:17] + "..."
-                    return f"[回复消息: 「{replied_text}」]"
-            return "[回复消息]" # 如果找不到或不是有效消息，显示通用提示
+            return "[回复消息]"
         elif part_type == "json":
             try:
                 json_data = json.loads(data.get("data", "{}"))

@@ -42,10 +42,8 @@ class MessageRetriever:
                 logger.error(f"获取群聊 {group_id} 历史消息失败: {e}")
                 break
 
-            if not messages:
-                break
-
-            breakFlag = False
+            has_new_message = False
+            time_order_than_target = False
             messages = reversed(messages)
             for msg in messages:
                 msg_seq = msg.get("message_seq")
@@ -53,12 +51,13 @@ class MessageRetriever:
                     continue
                 msg_time = datetime.fromtimestamp(msg.get("time", 0))
                 if msg_time < target_start_time:
-                    breakFlag = True
+                    time_order_than_target = True
                     break
+                has_new_message = True
                 all_messages.append(msg)
                 last_msg_seq = msg_seq
 
-            if breakFlag:
+            if not has_new_message or time_order_than_target:
                 break
 
         return reversed(all_messages)
