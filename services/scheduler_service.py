@@ -155,7 +155,7 @@ class SchedulerService:
         # 4. 构建消息并发送
         text_payload = {
             "group_id": group_id,
-            "message": [
+            "messages": [
                 {
                     "type": "node",
                     "data": {
@@ -164,7 +164,9 @@ class SchedulerService:
                         "content": [
                             {
                                 "type": "text",
-                                "text": f"【每日聊天总结】\n\n{summary}",
+                                "data": {
+                                    "text": f"【每日聊天总结】\n\n{summary}",
+                                },
                             }
                         ],
                     },
