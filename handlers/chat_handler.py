@@ -6,7 +6,8 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
     AiocqhttpMessageEvent,
 )
 from astrbot.core import logger
-from ..services import SummaryService, LLMService
+from ..services import SummaryService
+from ..services.summary_orchestrator import SummaryOrchestrator
 
 
 class ChatHandler:
@@ -16,11 +17,11 @@ class ChatHandler:
         self,
         config,
         summary_service: SummaryService,
-        llm_service: LLMService,
+        summary_orchestrator: SummaryOrchestrator,
     ):
         self.config = config
         self.summary_service = summary_service
-        self.llm_service = llm_service
+        self.summary_orchestrator = summary_orchestrator
 
     async def process_summary_request(
         self,
@@ -51,7 +52,7 @@ class ChatHandler:
             yield event.plain_result("抱歉，获取Bot信息失败，无法继续操作。")
             return
 
-        # 获取消息列表
+        # 获取消息列表并显示状态
         messages, status_message = await self.summary_service.get_messages_by_arg(
             client,
             group_id,
@@ -63,34 +64,15 @@ class ChatHandler:
             yield event.plain_result("在指定范围内没有找到可以总结的聊天记录。")
             return
 
-        # 格式化消息
-        formatted_chat = self.summary_service.format_messages(messages, my_id)
-        if not formatted_chat:
-            yield event.plain_result("筛选后没有可供总结的聊天内容。")
-            return
-
-        logger.info(
-            f"chat_summary: group_id={group_id} a_param={arg} msg_length={len(formatted_chat)} content:\n{formatted_chat}"
-        )
-
-        # 调用LLM生成总结
+        # 使用编排服务生成总结和图片
         try:
-            # 获取群组配置的提示词和HTML模板
-            group_config = self.config.get_group_config(str(group_id))
-            prompt = group_config.get("summary_prompt", self.config.default_prompt)
-            html_template = group_config.get(
-                "html_renderer_template",
-                self.config.default_html_template,
+            summary_text, summary_image_url = await self.summary_orchestrator.create_summary_with_image(
+                client, str(group_id), arg, my_id
             )
-
-            summary_text = await self.llm_service.get_summary(formatted_chat, prompt)
             yield event.plain_result(summary_text)
-
-            summary_image_url = await html_renderer.render_t2i(
-                summary_text,
-                template_name=html_template,
-            )
             yield event.image_result(summary_image_url)
+        except ValueError as e:
+            yield event.plain_result(str(e))
         except Exception as e:
             yield event.plain_result("抱歉，总结服务出现了一点问题，请稍后再试。")
             logger.error(f"生成总结失败: {e}")

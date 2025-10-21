@@ -5,7 +5,7 @@ from astrbot.api.star import Context, Star, register
 from astrbot.core import logger
 
 from .config import load_config
-from .services import SummaryService, LLMService, SchedulerService
+from .services import SummaryService, LLMService, SchedulerService, SummaryOrchestrator
 from .handlers import ChatHandler, ScheduleHandler
 
 
@@ -24,17 +24,24 @@ class ChatSummary(Star):
         # 2. 初始化服务层
         self.llm_service = LLMService(self.context)
         self.summary_service = SummaryService(self.config)
+        
+        # 3. 初始化编排服务
+        self.summary_orchestrator = SummaryOrchestrator(
+            self.config, self.summary_service, self.llm_service
+        )
+        
+        # 4. 初始化调度服务
         self.scheduler_service = SchedulerService(
-            self.context, self.config, self.summary_service, self.llm_service
+            self.context, self.config, self.summary_orchestrator
         )
 
-        # 3. 初始化处理器层
+        # 5. 初始化处理器层
         self.chat_handler = ChatHandler(
-            self.config, self.summary_service, self.llm_service
+            self.config, self.summary_service, self.summary_orchestrator
         )
         self.schedule_handler = ScheduleHandler(self.scheduler_service)
 
-        # 4. 启动定时任务
+        # 6. 启动定时任务
         self.schedule_handler.start_scheduled_tasks()
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
