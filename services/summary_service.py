@@ -138,6 +138,61 @@ class SummaryService:
                 None,
                 "参数格式不正确哦~\n请使用如「 /消息总结 30 」(数量) 或「 /消息总结 1h30m 」(时间) 的格式。",
             )
+    def _get_sender_display_name(self, sender: dict) -> str:
+        """获取发送者的显示名称，优先使用card，然后是nickname，最后是未知用户"""
+        return sender.get("card") or sender.get("nickname", "未知用户")
+
+    def _format_message_part(self, part: dict, messages: list, current_indent: int) -> str:
+        """格式化单个消息部分"""
+        part_type = part.get("type")
+        data = part.get("data", {})
+        indent_str = " " * current_indent
+
+        if part_type == "text":
+            return data.get("text", "").strip()
+        elif part_type == "image":
+            return "[图片]"
+        elif part_type == "video":
+            return "[视频]"
+        elif part_type == "face":
+            return "[表情]"
+        elif part_type == "reply":
+            replied_id = data.get("id")
+            if replied_id:
+                # 尝试查找被回复的消息
+                replied_message = next((msg for msg in messages if msg.get("message_id") == replied_id), None)
+                if replied_message and isinstance(replied_message.get("message"), list):
+                    # 如果找到了，递归格式化被回复消息的内容
+                    replied_text = "".join(
+                        self._format_message_part(p, messages, 0)
+                        for p in replied_message["message"]
+                        if p.get("type") in ["text", "image", "video", "face"] # 只展示部分类型以避免无限递归或过于冗长
+                    ).strip()
+                    if len(replied_text) > 20:
+                        replied_text = replied_text[:17] + "..."
+                    return f"[回复消息: 「{replied_text}」]"
+            return "[回复消息]" # 如果找不到或不是有效消息，显示通用提示
+        elif part_type == "json":
+            try:
+                json_data = json.loads(data.get("data", "{}"))
+                # 假设 self.parse_json 已经存在且能处理缩进
+                # 注意：这里需要确保 parse_json 方法是 MessageFormatter 的成员
+                return f"\n{self.parse_json(json_data, current_indent + 2)}\n{indent_str}"
+            except json.JSONDecodeError:
+                return "[无法读取的分享内容]"
+        elif part_type == "forward":
+            forward_msg_list = data.get("content", [])
+            formatted_forward = self.format_messages(
+                forward_msg_list,
+                self.config.my_id, # 假设 self.config.my_id 存储了机器人ID
+                current_indent + 2,
+            )
+            return (
+                f"\n{indent_str}{{\n"
+                f"{formatted_forward}\n"
+                f"{indent_str}}}"
+            )
+        return "" # 未知消息类型
 
     def format_messages(self, messages: list, my_id: int, indent: int = 0) -> str:
         """
@@ -146,75 +201,58 @@ class SummaryService:
         Args:
             messages: 消息列表
             my_id: 机器人自己的ID
+            indent: 当前的缩进级别
 
         Returns:
             格式化后的聊天文本
         """
-        chat_lines = []
+        formatted_lines = []
+        indent_str = " " * indent
+
         for msg in messages:
             sender = msg.get("sender", {})
             if my_id == sender.get("user_id"):
-                continue
-            if not isinstance(msg.get("message"), list):
+                continue # 忽略机器人自己的消息
+
+            # 确保 message 是列表类型
+            message_parts = msg.get("message")
+            if not isinstance(message_parts, list) or not message_parts:
                 continue
 
-            nickname = sender.get("card")
-            if not nickname:
-                nickname = sender.get("nickname", "未知用户")
+            nickname = self._get_sender_display_name(sender)
             msg_time = datetime.fromtimestamp(msg.get("time", 0))
-            message_text = ""
-            indent_str = " " * indent
-            for part in msg["message"]:
-                if part.get("type") == "text":
-                    message_text += part.get("data", {}).get("text", "").strip() + " "
-                elif part.get("type") == "json":
-                    try:
-                        json_data = json.loads(part.get("data", {}).get("data", "{}"))
 
-                        # --- 关键改动 ---
-                        # 调用解析函数时，传入当前的 indent 值
-                        formatted_json_text = self.parse_json(json_data, indent)
+            full_message_text = []
+            for part in message_parts:
+                part_text = self._format_message_part(part, messages, indent)
+                if part_text:
+                    full_message_text.append(part_text)
 
-                        # 拼接格式化文本
-                        message_text += formatted_json_text + "\n"
+            pure_text = " ".join(full_message_text).strip()
 
-                    except json.JSONDecodeError:
-                        message_text += "[无法读取的分享内容] "
-                elif part.get("type") == "face":
-                    message_text += "[表情] "
-                elif part.get("type") == "forward":
-                    message_text += (
-                        "[转发消息]: \n"
-                        f"{indent_str}"  # 缩进
-                        "{\n"
-                    )
-
-                    forward_msg_list = part.get("data", {}).get("content", [])
-                    formatted_forward = self.format_messages(
-                        forward_msg_list,
-                        my_id,
-                        indent + 2,
-                    )
-                    message_text += formatted_forward + "\n" + indent_str + "}" + "\n"
-            pure_text = message_text.strip()
+            # 处理唤醒前缀
+            is_wake_message = False
             for prefix in self.config.wake_prefix:
                 if pure_text.startswith(f"{prefix}image"):
-                    pure_text = pure_text[len(f"{prefix}image") :].strip()
+                    pure_text = pure_text[len(f"{prefix}image"):].strip()
+                    is_wake_message = True
+                    break # 找到匹配项后跳出
+                elif pure_text.startswith(prefix):
+                    is_wake_message = True
+                    break
 
-            if any(pure_text.startswith(prefix) for prefix in self.config.wake_prefix):
-                continue
+            if is_wake_message and not self.config.include_wake_messages: # 假设有一个配置项来决定是否包含唤醒消息
+                 continue # 如果是唤醒消息且配置为不包含，则跳过
 
+            # 只有当消息内容不为空时才添加
             if pure_text:
-                chat_lines.append(
-                    (
-                        f"{indent_str}"
-                        f"[{msg_time.strftime('%Y-%m-%d %H:%M:%S')}]"
-                        f"「{nickname}」: "
-                        f"{pure_text.strip()}"
-                    )
+                formatted_lines.append(
+                    f"{indent_str}"
+                    f"[{msg_time.strftime('%Y-%m-%d %H:%M:%S')}]"
+                    f"「{nickname}」: "
+                    f"{pure_text}"
                 )
-
-        return "\n".join(chat_lines)
+        return "\n".join(formatted_lines)
 
     async def get_messages_by_time(
         self, client, group_id: int, time_delta: timedelta
