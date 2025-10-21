@@ -79,8 +79,9 @@ class SummaryService:
                 title = news.get("title", "无标题")
                 desc = news.get("desc", "无简介")
                 url = news.get("jumpUrl", "无链接")
+                tag = news.get("tag", "")
 
-                return f"[分享内容]\n标题: {title}\n简介: {desc}\n链接: {url}"
+                return f"[分享 - {tag}]\n标题: {title}\n简介: {desc}\n链接: {url}"
 
             # --- 其他未知的JSON类型 ---
             else:
