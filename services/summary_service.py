@@ -36,28 +36,31 @@ class SummaryService:
                 messages = json_data.get("meta", {}).get("detail", {}).get("news", [])
                 if not messages:
                     return "[空的转发消息]"
-                
+
                 # --- 缩进处理逻辑 ---
                 # 定义内容缩进，比当前级别多2个空格
                 content_indent_str = " " * (indent + 2)
-                
+
                 # 提取并为每一行消息添加缩进
                 chat_lines = [
                     f"{content_indent_str}{msg.get('text', '')}"
-                    for msg in messages if msg.get('text', '').strip()
+                    for msg in messages
+                    if msg.get("text", "").strip()
                 ]
 
                 # 按照您原有的风格，构建带大括号和缩进的转发消息块
                 # 注意：这里的开头 "[转发消息]:" 不加缩进，因为它将拼接在主消息行后面
+                # --- FIX: Use a triple-quoted f-string for clarity and compatibility ---
+                indent_str = " " * indent
+                joined_lines = "\n".join(chat_lines)
                 return (
                     "[转发消息]:\n"
-                    f"{' ' * indent}"
+                    f"{indent_str}"
                     "\{\n"
-                    f"{'\n'.join(chat_lines)}\n"
-                    f"{' ' * indent}"
+                    f"{joined_lines}"
+                    f"{indent_str}"
                     "\}"
-                )
-
+                )  # 注意这里的反斜杠用于转义大括号
             # --- 适配类型2: QQ小程序分享 ---
             # 对应文件: 2.json, 4.json
             elif app_type == "com.tencent.miniapp_01":
@@ -65,7 +68,7 @@ class SummaryService:
                 title = detail.get("title", "未知应用")
                 desc = detail.get("desc", "无简介")
                 url = detail.get("qqdocurl") or detail.get("url", "无链接")
-                
+
                 # 对于非转发的分享，内容自成一体，通常不需要额外缩进
                 return f"[分享 - {title}]\n简介: {desc}\n链接: {url}"
 
@@ -86,7 +89,7 @@ class SummaryService:
 
         except (KeyError, TypeError, AttributeError) as e:
             return f"[无法解析的JSON内容: {e}]"
-    
+
     async def get_messages_by_arg(
         self,
         client,
@@ -166,14 +169,14 @@ class SummaryService:
                 elif part.get("type") == "json":
                     try:
                         json_data = json.loads(part.get("data", {}).get("data", "{}"))
-                        
+
                         # --- 关键改动 ---
                         # 调用解析函数时，传入当前的 indent 值
-                        formatted_json_text = self.parse_json(json_data, indent) 
-                        
+                        formatted_json_text = self.parse_json(json_data, indent)
+
                         # 拼接格式化文本
                         message_text += formatted_json_text + "\n"
-                        
+
                     except json.JSONDecodeError:
                         message_text += "[无法读取的分享内容] "
                 elif part.get("type") == "face":
@@ -197,10 +200,7 @@ class SummaryService:
                 if pure_text.startswith(f"{prefix}image"):
                     pure_text = pure_text[len(f"{prefix}image") :].strip()
 
-            if any(
-                pure_text.startswith(prefix)
-                for prefix in self.config.wake_prefix
-            ):
+            if any(pure_text.startswith(prefix) for prefix in self.config.wake_prefix):
                 continue
 
             if pure_text:
