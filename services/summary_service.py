@@ -15,6 +15,76 @@ class SummaryService:
     ):
         self.config = config
 
+    def parse_json(self, json_data: dict, indent: int = 0) -> str:
+        """
+        解析从聊天消息中获取的不同类型JSON数据，并将其格式化为可读文本。
+        增加了对缩进的处理，以适配嵌套的消息结构。
+
+        Args:
+            json_data: 包含消息详情的JSON数据 (已从字符串解析为字典)。
+            indent: 当前消息的缩进级别，用于格式化转发消息。
+
+        Returns:
+            格式化后的消息文本字符串。
+        """
+        app_type = json_data.get("app")
+
+        try:
+            # --- 适配类型1: 转发消息 (聊天记录) ---
+            # 对应文件: 1.json
+            if app_type == "com.tencent.multimsg":
+                messages = json_data.get("meta", {}).get("detail", {}).get("news", [])
+                if not messages:
+                    return "[空的转发消息]"
+                
+                # --- 缩进处理逻辑 ---
+                # 定义内容缩进，比当前级别多2个空格
+                content_indent_str = " " * (indent + 2)
+                
+                # 提取并为每一行消息添加缩进
+                chat_lines = [
+                    f"{content_indent_str}{msg.get('text', '')}"
+                    for msg in messages if msg.get('text', '').strip()
+                ]
+
+                # 按照您原有的风格，构建带大括号和缩进的转发消息块
+                # 注意：这里的开头 "[转发消息]:" 不加缩进，因为它将拼接在主消息行后面
+                return (
+                    "[转发消息]:\n"
+                    f"{' ' * indent}{{\n"
+                    f"{'\n'.join(chat_lines)}\n"
+                    f"{' ' * indent}}}"
+                )
+
+            # --- 适配类型2: QQ小程序分享 ---
+            # 对应文件: 2.json, 4.json
+            elif app_type == "com.tencent.miniapp_01":
+                detail = json_data.get("meta", {}).get("detail_1", {})
+                title = detail.get("title", "未知应用")
+                desc = detail.get("desc", "无简介")
+                url = detail.get("qqdocurl") or detail.get("url", "无链接")
+                
+                # 对于非转发的分享，内容自成一体，通常不需要额外缩进
+                return f"[分享 - {title}]\n简介: {desc}\n链接: {url}"
+
+            # --- 适配类型3: 普通图文分享 (如小红书) ---
+            # 对应文件: 3.json
+            elif app_type == "com.tencent.tuwen.lua":
+                news = json_data.get("meta", {}).get("news", {})
+                title = news.get("title", "无标题")
+                desc = news.get("desc", "无简介")
+                url = news.get("jumpUrl", "无链接")
+
+                return f"[分享内容]\n标题: {title}\n简介: {desc}\n链接: {url}"
+
+            # --- 其他未知的JSON类型 ---
+            else:
+                prompt_text = json_data.get("prompt", "[未知的JSON分享]")
+                return prompt_text
+
+        except (KeyError, TypeError, AttributeError) as e:
+            return f"[无法解析的JSON内容: {e}]"
+    
     async def get_messages_by_arg(
         self,
         client,
@@ -94,11 +164,16 @@ class SummaryService:
                 elif part.get("type") == "json":
                     try:
                         json_data = json.loads(part.get("data", {}).get("data", "{}"))
-                        desc = json_data.get("meta", {}).get("news", {}).get("desc")
-                        if desc:
-                            message_text += f"[分享内容]{desc} "
-                    except (json.JSONDecodeError, AttributeError):
-                        pass
+                        
+                        # --- 关键改动 ---
+                        # 调用解析函数时，传入当前的 indent 值
+                        formatted_json_text = self.parse_json(json_data, indent) 
+                        
+                        # 拼接格式化文本
+                        message_text += formatted_json_text + "\n"
+                        
+                    except json.JSONDecodeError:
+                        message_text += "[无法读取的分享内容] "
                 elif part.get("type") == "face":
                     message_text += "[表情] "
                 elif part.get("type") == "forward":
@@ -114,7 +189,7 @@ class SummaryService:
                         my_id,
                         indent + 2,
                     )
-                    message_text += formatted_forward + "\n" + indent_str + "}"
+                    message_text += formatted_forward + "\n" + indent_str + "}" + "\n"
             pure_text = message_text.strip()
             for prefix in self.config.wake_prefix:
                 if pure_text.startswith(f"{prefix}image"):
