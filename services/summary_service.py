@@ -142,7 +142,7 @@ class SummaryService:
         """获取发送者的显示名称，优先使用card，然后是nickname，最后是未知用户"""
         return sender.get("card") or sender.get("nickname", "未知用户")
 
-    def _format_message_part(self, part: dict, messages: list, current_indent: int) -> str:
+    def _format_message_part(self, my_id: int, part: dict, messages: list, current_indent: int) -> str:
         """格式化单个消息部分"""
         part_type = part.get("type")
         data = part.get("data", {})
@@ -158,9 +158,10 @@ class SummaryService:
             return "[表情]"
         elif part_type == "reply":
             replied_id = data.get("id")
+            logger.info(f"处理回复消息，replied_id={replied_id}")
             if replied_id:
                 # 尝试查找被回复的消息
-                replied_message = next((msg for msg in messages if msg.get("message_id") == replied_id), None)
+                replied_message = next((msg for msg in messages if int(msg.get("message_id")) == int(replied_id)), None)
                 if replied_message and isinstance(replied_message.get("message"), list):
                     # 如果找到了，递归格式化被回复消息的内容
                     replied_text = "".join(
@@ -184,7 +185,7 @@ class SummaryService:
             forward_msg_list = data.get("content", [])
             formatted_forward = self.format_messages(
                 forward_msg_list,
-                self.config.my_id, # 假设 self.config.my_id 存储了机器人ID
+                my_id, # 假设 self.config.my_id 存储了机器人ID
                 current_indent + 2,
             )
             return (
@@ -224,7 +225,7 @@ class SummaryService:
 
             full_message_text = []
             for part in message_parts:
-                part_text = self._format_message_part(part, messages, indent)
+                part_text = self._format_message_part(my_id, part, messages, indent)
                 if part_text:
                     full_message_text.append(part_text)
 
