@@ -15,15 +15,6 @@ class SchedulerService:
         self.context = context
         self.config = config
         self.summary_orchestrator = summary_orchestrator
-        self.platforms = self.context.platform_manager.get_insts()
-        self.platform = next(
-            (
-                platform
-                for platform in self.platforms
-                if platform.metadata.name == "aiocqhttp"
-            ),
-            None,
-        )
         self.scheduled_tasks = []
 
     def start_all_scheduled_tasks(self):
@@ -92,10 +83,20 @@ class SchedulerService:
             group_id: 群组ID
             interval: 总结时间范围
         """
-        if self.platform is None:
+        platforms = self.context.platform_manager.get_insts()
+        platform = next(
+            (
+                platform
+                for platform in platforms
+                if platform.metadata.name == "aiocqhttp"
+            ),
+            None,
+        )
+
+        if platform is None:
             logger.error("未找到 aiocqhttp 平台实例，无法发送定时总结")
             return
-        client = self.platform.get_client()
+        client = platform.get_client()
 
         try:
             login_info = await client.api.call_action("get_login_info")
