@@ -75,7 +75,12 @@ class SummaryOrchestrator:
                 except Exception as e:
                     logger.error(f"调用LLM失败: {e}")
                     summary = "抱歉,总结服务出现了一点问题。"
-
+        if summary.startswith("```md"):
+            summary = summary[5:]
+        if summary.startswith("```markdown"):
+            summary = summary[11:]
+        if summary.endswith("```"):
+            summary = summary[:-3]
         # 4. 生成图片
         group_config = self.config.get_group_config(str(group_id))
         html_template = group_config.get(
