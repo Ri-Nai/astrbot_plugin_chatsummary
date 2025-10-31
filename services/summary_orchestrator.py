@@ -81,6 +81,7 @@ class SummaryOrchestrator:
             summary = summary[11:]
         if summary.endswith("```"):
             summary = summary[:-3]
+        summary = summary.strip()
         # 4. 生成图片
         group_config = self.config.get_group_config(str(group_id))
         html_template = group_config.get(
