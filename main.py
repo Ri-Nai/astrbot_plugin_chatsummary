@@ -24,12 +24,12 @@ class ChatSummary(Star):
         # 2. 初始化服务层
         self.llm_service = LLMService(self.context)
         self.summary_service = SummaryService(self.config)
-        
+
         # 3. 初始化编排服务
         self.summary_orchestrator = SummaryOrchestrator(
             self.config, self.summary_service, self.llm_service
         )
-        
+
         # 4. 初始化调度服务
         self.scheduler_service = SchedulerService(
             self.context, self.config, self.summary_orchestrator
@@ -56,7 +56,9 @@ class ChatSummary(Star):
 
         group_id = event.get_group_id()
         async for result in self.chat_handler.process_summary_request(
-            event, group_id, str(arg)
+            event,
+            group_id,
+            str(arg),
         ):
             yield result
 
@@ -73,7 +75,9 @@ class ChatSummary(Star):
             return
 
         async for result in self.chat_handler.process_summary_request(
-            event, group_id, str(arg)
+            event,
+            group_id,
+            str(arg),
         ):
             yield result
 

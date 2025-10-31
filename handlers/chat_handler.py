@@ -2,6 +2,7 @@
 
 from astrbot.api import html_renderer
 from astrbot.api.event import AstrMessageEvent
+from astrbot.api.message_components import Node, Plain
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
     AiocqhttpMessageEvent,
 )
@@ -66,10 +67,23 @@ class ChatHandler:
 
         # 使用编排服务生成总结和图片
         try:
-            summary_text, summary_image_url = await self.summary_orchestrator.create_summary_with_image(
-                client, str(group_id), arg, my_id
+            summary_text, summary_image_url = (
+                await self.summary_orchestrator.create_summary_with_image(
+                    client,
+                    str(group_id),
+                    arg,
+                    my_id,
+                )
             )
-            yield event.plain_result(summary_text)
+            yield event.chain_result(
+                [
+                    Node(
+                        uin=my_id,
+                        name="AstrBot",
+                        content=[Plain(summary_text)],
+                    )
+                ]
+            )
             yield event.image_result(summary_image_url)
         except ValueError as e:
             yield event.plain_result(str(e))
