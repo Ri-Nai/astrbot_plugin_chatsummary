@@ -15,6 +15,13 @@ class PluginConfig:
         self.default_prompt = "请总结以下聊天记录："
         self.default_html_template = "base"  # 默认HTML渲染模板
         self.wake_prefix = []
+        
+        # 图片描述配置
+        self.enable_image_description = True
+        self.image_description_cache_size = 100
+        self.max_concurrent_image_requests = 3
+        self.image_request_delay = 0.5
+        
         self._data = {}
         self._groups = {}  # 存储群组配置
 
@@ -23,6 +30,7 @@ class PluginConfig:
 
         self._load_from_file(config_file_path)
         self._sync_prompt()
+        self._sync_image_config()
         self._parse_groups()
 
     def _load_from_file(self, config_file_path: str) -> None:
@@ -54,6 +62,21 @@ class PluginConfig:
         # 先获取 default_prompt，如果没有则使用内置默认值
         default_prompt_value = self._data.get("default_prompt", self.default_prompt)
         self.default_prompt = str(default_prompt_value).replace("\\n", "\n")
+    
+    def _sync_image_config(self) -> None:
+        """同步图片描述相关配置"""
+        self.enable_image_description = self._data.get(
+            "enable_image_description", self.enable_image_description
+        )
+        self.image_description_cache_size = self._data.get(
+            "image_description_cache_size", self.image_description_cache_size
+        )
+        self.max_concurrent_image_requests = self._data.get(
+            "max_concurrent_image_requests", self.max_concurrent_image_requests
+        )
+        self.image_request_delay = self._data.get(
+            "image_request_delay", self.image_request_delay
+        )
 
     def _parse_groups(self) -> None:
         """解析群组配置"""
@@ -106,6 +129,7 @@ class PluginConfig:
     def merge(self, data) -> None:
         self._merge_data(data)
         self._sync_prompt()
+        self._sync_image_config()
         self._parse_groups()
 
     def get(self, key, default=None):
@@ -116,6 +140,10 @@ class PluginConfig:
         merged["default_prompt"] = self.default_prompt
         merged["default_html_template"] = self.default_html_template
         merged["wake_prefix"] = self.wake_prefix
+        merged["enable_image_description"] = self.enable_image_description
+        merged["image_description_cache_size"] = self.image_description_cache_size
+        merged["max_concurrent_image_requests"] = self.max_concurrent_image_requests
+        merged["image_request_delay"] = self.image_request_delay
         return merged
 
 

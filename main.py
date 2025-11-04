@@ -22,7 +22,13 @@ class ChatSummary(Star):
         self.config = load_config(self.context, config)
 
         # 2. 初始化服务层
-        self.llm_service = LLMService(self.context)
+        self.llm_service = LLMService(
+            self.context,
+            enable_image_description=self.config.enable_image_description,
+            image_description_cache_size=self.config.image_description_cache_size,
+            max_concurrent_image_requests=self.config.max_concurrent_image_requests,
+            image_request_delay=self.config.image_request_delay,
+        )
         self.summary_service = SummaryService(self.config)
 
         # 3. 初始化编排服务
