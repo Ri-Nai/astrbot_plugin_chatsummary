@@ -22,6 +22,10 @@ class PluginConfig:
         self.max_concurrent_image_requests = 3
         self.image_request_delay = 0.5
         
+        # 总结重试配置
+        self.summary_max_retries = 2
+        self.summary_retry_delay = 2.0
+        
         self._data = {}
         self._groups = {}  # 存储群组配置
 
@@ -64,7 +68,7 @@ class PluginConfig:
         self.default_prompt = str(default_prompt_value).replace("\\n", "\n")
     
     def _sync_image_config(self) -> None:
-        """同步图片描述相关配置"""
+        """同步图片描述和总结重试相关配置"""
         self.enable_image_description = self._data.get(
             "enable_image_description", self.enable_image_description
         )
@@ -76,6 +80,12 @@ class PluginConfig:
         )
         self.image_request_delay = self._data.get(
             "image_request_delay", self.image_request_delay
+        )
+        self.summary_max_retries = self._data.get(
+            "summary_max_retries", self.summary_max_retries
+        )
+        self.summary_retry_delay = self._data.get(
+            "summary_retry_delay", self.summary_retry_delay
         )
 
     def _parse_groups(self) -> None:
@@ -144,6 +154,8 @@ class PluginConfig:
         merged["image_description_cache_size"] = self.image_description_cache_size
         merged["max_concurrent_image_requests"] = self.max_concurrent_image_requests
         merged["image_request_delay"] = self.image_request_delay
+        merged["summary_max_retries"] = self.summary_max_retries
+        merged["summary_retry_delay"] = self.summary_retry_delay
         return merged
 
 

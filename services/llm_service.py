@@ -37,13 +37,17 @@ class LLMService:
         self,
         formatted_chat: str,
         prompt: str,
+        max_retries: int = 2,
+        retry_delay: float = 2.0,
     ) -> str:
         """
-        调用LLM获取总结
+        调用LLM获取总结（带重试机制）
 
         Args:
             formatted_chat: 格式化后的聊天内容
             prompt: 使用的提示词
+            max_retries: 最大重试次数
+            retry_delay: 重试延迟（秒）
 
         Returns:
             LLM生成的总结文本
@@ -51,15 +55,48 @@ class LLMService:
         Raises:
             Exception: LLM调用失败时抛出异常
         """
-        try:
-            llm_response = await self.context.get_using_provider().text_chat(
-                prompt=prompt,
-                contexts=[{"role": "user", "content": formatted_chat}],
-            )
-            return llm_response.completion_text
-        except Exception as e:
-            logger.error(f"调用LLM服务失败: {e}")
-            raise
+        last_error = None
+        
+        for attempt in range(max_retries + 1):
+            try:
+                if attempt > 0:
+                    # 指数退避：第一次重试等待 retry_delay，第二次等待 retry_delay * 2
+                    wait_time = retry_delay * (2 ** (attempt - 1))
+                    logger.info(f"LLM调用重试 {attempt}/{max_retries}，等待 {wait_time} 秒...")
+                    await asyncio.sleep(wait_time)
+                
+                llm_response = await self.context.get_using_provider().text_chat(
+                    prompt=prompt,
+                    contexts=[{"role": "user", "content": formatted_chat}],
+                )
+                
+                # 调用成功
+                if attempt > 0:
+                    logger.info(f"LLM调用在第 {attempt} 次重试后成功")
+                
+                return llm_response.completion_text
+                
+            except Exception as e:
+                error_msg = str(e)
+                last_error = e
+                
+                # 检查是否是 429 错误
+                if "429" in error_msg or "Request limit exceeded" in error_msg or "rate limit" in error_msg.lower():
+                    logger.warning(f"LLM调用遇到请求限制 (429)：{error_msg}")
+                    # 如果还有重试机会，继续；否则退出循环
+                    if attempt < max_retries:
+                        continue
+                    else:
+                        logger.error("LLM调用已达到最大重试次数，仍然遇到请求限制")
+                        raise Exception("请求过于频繁，请稍后再试。建议降低图片描述功能的并发数或增加延迟。") from e
+                else:
+                    # 非 429 错误，直接抛出
+                    logger.error(f"调用LLM服务失败: {e}")
+                    raise
+        
+        # 所有重试都失败
+        if last_error:
+            raise last_error
 
     def _manage_cache(self, url: str, description: str):
         """管理缓存大小，使用 LRU 策略"""

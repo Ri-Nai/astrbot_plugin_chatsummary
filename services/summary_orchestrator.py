@@ -81,10 +81,31 @@ class SummaryOrchestrator:
                         "summary_prompt",
                         self.config.default_prompt,
                     )
-                    summary = await self.llm_service.get_summary(formatted_chat, prompt)
+                    summary = await self.llm_service.get_summary(
+                        formatted_chat, 
+                        prompt,
+                        max_retries=self.config.summary_max_retries,
+                        retry_delay=self.config.summary_retry_delay,
+                    )
                 except Exception as e:
+                    error_msg = str(e)
                     logger.error(f"调用LLM失败: {e}")
-                    summary = "抱歉,总结服务出现了一点问题。"
+                    
+                    # 根据错误类型提供不同的提示信息
+                    if "429" in error_msg or "Request limit exceeded" in error_msg or "请求过于频繁" in error_msg:
+                        summary = (
+                            "⚠️ 总结失败：API 请求频率超限\n\n"
+                            "可能的原因：\n"
+                            "1. 图片描述功能调用过于频繁\n"
+                            "2. API 配额已用尽\n\n"
+                            "建议解决方案：\n"
+                            "• 降低图片描述并发数（配置项：max_concurrent_image_requests，建议设为 1-2）\n"
+                            "• 增加图片请求延迟（配置项：image_request_delay，建议设为 1.0-2.0）\n"
+                            "• 暂时关闭图片描述功能（配置项：enable_image_description，设为 false）\n"
+                            "• 等待几分钟后重试"
+                        )
+                    else:
+                        summary = f"⚠️ 总结失败：{error_msg}\n\n请检查 LLM 配置或稍后重试。"
         if summary.startswith("```md"):
             summary = summary[5:]
         if summary.startswith("```markdown"):
