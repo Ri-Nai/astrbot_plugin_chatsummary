@@ -67,19 +67,20 @@ class SummaryService:
                 None,
                 "参数格式不正确哦~\n请使用如「 /消息总结 30 」(数量) 或「 /消息总结 1h30m 」(时间) 的格式。",
             )
-    def format_messages(self, messages: list, my_id: int, indent: int = 0) -> str:
+    async def format_messages(self, messages: list, my_id: int, llm_service=None, indent: int = 0) -> str:
         """
         将从API获取的消息列表格式化为文本
 
         Args:
             messages: 消息列表
             my_id: 机器人自己的ID
+            llm_service: 可选的LLM服务，如果提供则为图片生成描述
             indent: 当前的缩进级别
 
         Returns:
             格式化后的聊天文本
         """
-        return self.message_formatter.format_messages(messages, my_id, indent)
+        return await self.message_formatter.format_messages(messages, my_id, indent, llm_service)
 
     async def get_messages_by_time(
         self, client, group_id: int, time_delta: timedelta

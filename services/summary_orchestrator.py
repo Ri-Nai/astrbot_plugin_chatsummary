@@ -55,8 +55,19 @@ class SummaryOrchestrator:
         if not messages:
             summary = "在指定范围内没有找到可以总结的聊天记录。"
         else:
-            # 2. 格式化消息
-            formatted_chat = self.summary_service.format_messages(messages, my_id)
+            # 2. 格式化消息（支持图片描述）
+            group_config = self.config.get_group_config(str(group_id))
+            enable_image_description = group_config.get("enable_image_description", True)
+            
+            # 如果启用图片描述，传入 llm_service，否则传 None
+            llm_for_image = self.llm_service if enable_image_description else None
+            if enable_image_description:
+                logger.info("启用图片描述功能，将为每张图片调用LLM获取描述")
+            
+            formatted_chat = await self.summary_service.format_messages(
+                messages, my_id, llm_for_image
+            )
+                
             logger.info(
                 f"总结: group_id={group_id} arg={arg} msg_length={len(formatted_chat)} content:\n{formatted_chat}"
             )
@@ -66,7 +77,6 @@ class SummaryOrchestrator:
             else:
                 try:
                     # 3. 获取提示词并生成总结
-                    group_config = self.config.get_group_config(str(group_id))
                     prompt = group_config.get(
                         "summary_prompt",
                         self.config.default_prompt,
@@ -83,7 +93,8 @@ class SummaryOrchestrator:
             summary = summary[:-3]
         summary = summary.strip()
         # 4. 生成图片
-        group_config = self.config.get_group_config(str(group_id))
+        if 'group_config' not in locals():
+            group_config = self.config.get_group_config(str(group_id))
         html_template = group_config.get(
             "html_renderer_template",
             self.config.default_html_template,
