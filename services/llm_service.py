@@ -57,22 +57,22 @@ class LLMService:
         """
         try:
             provider = self.context.get_using_provider()
-            
             # 检查 provider 是否支持图片
             supports_image = False
+            provider_config = getattr(provider, "provider_config", {})
             try:
-                modalities = getattr(provider, "modalities", None)
+                modalities = provider_config.get("modalities", None)
                 if isinstance(modalities, (list, tuple)):
                     ml = [str(m).lower() for m in modalities]
                     if any(k in ml for k in ["image", "vision", "multimodal"]):
                         supports_image = True
             except Exception:
                 pass
-            
+
             if not supports_image:
                 logger.warning("当前LLM不支持视觉能力，跳过图片描述")
                 return "[图片]"
-            
+
             # 调用 LLM
             llm_response = await provider.text_chat(
                 prompt=prompt,
@@ -80,17 +80,19 @@ class LLMService:
                 system_prompt="你是一个图片描述助手，请简洁准确地描述图片内容。",
                 image_urls=[image_url],
             )
-            
+
             # 提取文本
             description = llm_response.completion_text
-            
+
             if description and description != "（未解析到可读内容）":
-                logger.info(f"图片描述成功: {image_url[:50]}... -> {description[:30]}...")
+                logger.info(
+                    f"图片描述成功: {image_url[:50]}... -> {description[:30]}..."
+                )
                 return f"[图片: {description}]"
             else:
                 logger.warning(f"图片描述为空: {image_url[:50]}...")
                 return "[图片]"
-                
+
         except Exception as e:
             logger.error(f"获取图片描述失败: {e}")
             return "[图片]"
