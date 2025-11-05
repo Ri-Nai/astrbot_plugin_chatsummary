@@ -110,7 +110,7 @@ class MessageFormatter:
                         replied_message = candidate
                         break
 
-            reply_sender = "未知用户"
+            reply_sender = ""
             reply_content = ""
 
             if replied_message:
@@ -143,8 +143,11 @@ class MessageFormatter:
                     reply_content = fallback_text.strip()
 
             if reply_content:
-                return f"回复消息: {reply_sender}: {reply_content}"
-            return f"回复消息: {reply_sender}"
+                return f"[回复消息: {reply_sender}: {reply_content}]"
+            elif reply_sender:
+                return f"[回复消息: {reply_sender}]"
+            else:
+                return "[回复消息]"
         elif part_type == "json":
             try:
                 json_data = json.loads(data.get("data", "{}"))
