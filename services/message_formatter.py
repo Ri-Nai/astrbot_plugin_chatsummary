@@ -12,6 +12,42 @@ class MessageFormatter:
     def __init__(self, config):
         self.config = config
 
+    async def _collect_message_text(
+        self,
+        my_id: int,
+        message_parts: list,
+        all_messages: list,
+        current_indent: int,
+        llm_service=None,
+        skip_reply: bool = False,
+    ) -> str:
+        """汇总一条消息中的各个部分文本"""
+        if not isinstance(message_parts, list):
+            return ""
+
+        collected_parts: list[str] = []
+
+        for part in message_parts:
+            if skip_reply and part.get("type") == "reply":
+                continue
+
+            try:
+                part_text = await self._format_message_part(
+                    my_id,
+                    part,
+                    all_messages,
+                    current_indent,
+                    llm_service,
+                )
+                if part_text:
+                    collected_parts.append(part_text)
+            except Exception as e:
+                logger.error(f"处理消息部分失败，已跳过: {e}")
+                if part.get("type") == "image":
+                    collected_parts.append("[图片]")
+
+        return " ".join(collected_parts).strip()
+
     def _get_sender_display_name(self, sender: dict) -> str:
         """获取发送者的显示名称，优先使用card，然后是nickname，最后是未知用户"""
         return sender.get("card") or sender.get("nickname", "未知用户")
@@ -59,7 +95,56 @@ class MessageFormatter:
         elif part_type == "face":
             return "[表情]"
         elif part_type == "reply":
-            return "[回复消息]"
+            reply_id = data.get("id")
+            replied_message = None
+
+            if reply_id is not None and isinstance(messages, list):
+                reply_id_str = str(reply_id)
+                for candidate in messages:
+                    candidate_id_match = (
+                        reply_id_str == str(candidate.get("message_id"))
+                        or reply_id_str == str(candidate.get("message_seq"))
+                        or reply_id_str == str(candidate.get("id"))
+                    )
+                    if candidate_id_match:
+                        replied_message = candidate
+                        break
+
+            reply_sender = "未知用户"
+            reply_content = ""
+
+            if replied_message:
+                reply_sender = self._get_sender_display_name(
+                    replied_message.get("sender", {})
+                )
+                reply_content = await self._collect_message_text(
+                    my_id,
+                    replied_message.get("message", []),
+                    messages,
+                    current_indent,
+                    llm_service,
+                    skip_reply=True,
+                )
+                if not reply_content:
+                    raw_message = replied_message.get("raw_message")
+                    if isinstance(raw_message, str):
+                        reply_content = raw_message.strip()
+            else:
+                nickname = data.get("nickname") or data.get("name")
+                if isinstance(nickname, str) and nickname.strip():
+                    reply_sender = nickname.strip()
+                else:
+                    reply_sender_id = data.get("qq") or data.get("user_id")
+                    if reply_sender_id:
+                        reply_sender = str(reply_sender_id)
+
+                fallback_text = data.get("text")
+                if isinstance(fallback_text, str) and fallback_text.strip():
+                    reply_content = fallback_text.strip()
+
+            if reply_content:
+                return f"回复消息: {reply_sender}: {reply_content}"
+            return f"回复消息: {reply_sender}"
         elif part_type == "json":
             try:
                 json_data = json.loads(data.get("data", "{}"))
@@ -94,6 +179,9 @@ class MessageFormatter:
         Returns:
             格式化后的聊天文本
         """
+        if not isinstance(messages, list):
+            messages = list(messages)
+
         formatted_lines = []
         indent_str = " " * indent
 
@@ -110,21 +198,13 @@ class MessageFormatter:
             nickname = self._get_sender_display_name(sender)
             msg_time = datetime.fromtimestamp(msg.get("time", 0))
 
-            full_message_text = []
-            for part in message_parts:
-                try:
-                    part_text = await self._format_message_part(my_id, part, messages, indent, llm_service)
-                    if part_text:
-                        full_message_text.append(part_text)
-                except Exception as e:
-                    # 确保单个消息部分处理失败不会影响整个消息
-                    logger.error(f"处理消息部分失败，已跳过: {e}")
-                    # 如果是图片类型，添加占位符
-                    if part.get("type") == "image":
-                        full_message_text.append("[图片]")
-                    continue
-
-            pure_text = " ".join(full_message_text).strip()
+            pure_text = await self._collect_message_text(
+                my_id,
+                message_parts,
+                messages,
+                indent,
+                llm_service,
+            )
 
             # 处理唤醒前缀
             is_wake_message = False
@@ -138,7 +218,7 @@ class MessageFormatter:
                     break
 
             if is_wake_message:
-                 continue # 如果是唤醒消息且配置为不包含，则跳过
+                continue # 如果是唤醒消息且配置为不包含，则跳过
 
             # 只有当消息内容不为空时才添加
             if pure_text:
