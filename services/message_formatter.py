@@ -45,8 +45,14 @@ class MessageFormatter:
             if llm_service:
                 img_url = self._extract_image_url(data)
                 if img_url and self._is_valid_image_url(img_url):
-                    logger.info(f"正在为图片获取描述: {img_url[:50]}...")
-                    return await llm_service.get_image_description(img_url)
+                    try:
+                        logger.info(f"正在为图片获取描述: {img_url[:50]}...")
+                        description = await llm_service.get_image_description(img_url)
+                        return description
+                    except Exception as e:
+                        # 双重保护：即使 get_image_description 内部失败，这里也能捕获
+                        logger.warning(f"图片描述失败（已降级）: {img_url[:50]}... - {e}")
+                        return "[图片]"
             return "[图片]"
         elif part_type == "video":
             return "[视频]"
@@ -106,9 +112,17 @@ class MessageFormatter:
 
             full_message_text = []
             for part in message_parts:
-                part_text = await self._format_message_part(my_id, part, messages, indent, llm_service)
-                if part_text:
-                    full_message_text.append(part_text)
+                try:
+                    part_text = await self._format_message_part(my_id, part, messages, indent, llm_service)
+                    if part_text:
+                        full_message_text.append(part_text)
+                except Exception as e:
+                    # 确保单个消息部分处理失败不会影响整个消息
+                    logger.error(f"处理消息部分失败，已跳过: {e}")
+                    # 如果是图片类型，添加占位符
+                    if part.get("type") == "image":
+                        full_message_text.append("[图片]")
+                    continue
 
             pure_text = " ".join(full_message_text).strip()
 

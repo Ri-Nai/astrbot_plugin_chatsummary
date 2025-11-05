@@ -100,13 +100,17 @@ class LLMService:
 
     def _manage_cache(self, url: str, description: str):
         """管理缓存大小，使用 LRU 策略"""
-        self._image_cache[url] = description
-        
-        # 如果缓存超过限制，删除最旧的条目
-        if len(self._image_cache) > self._cache_size:
-            # 删除第一个键（最旧的）
-            first_key = next(iter(self._image_cache))
-            del self._image_cache[first_key]
+        try:
+            self._image_cache[url] = description
+            
+            # 如果缓存超过限制，删除最旧的条目
+            if len(self._image_cache) > self._cache_size:
+                # 删除第一个键（最旧的）
+                first_key = next(iter(self._image_cache))
+                del self._image_cache[first_key]
+        except Exception as e:
+            # 缓存操作失败不应影响主流程
+            logger.warning(f"缓存操作失败: {e}")
     
     async def get_image_description(
         self,
@@ -115,6 +119,8 @@ class LLMService:
     ) -> str:
         """
         调用支持视觉的LLM获取图片描述（带缓存和限流）
+        
+        注意：此方法保证永远不会抛出异常，失败时总是返回 "[图片]"
 
         Args:
             image_url: 图片URL
@@ -123,83 +129,89 @@ class LLMService:
         Returns:
             图片描述文本，失败时返回 "[图片]"
         """
-        # 检查是否启用图片描述
-        if not self.enable_image_description:
-            return "[图片]"
-        
-        # 检查缓存
-        if image_url in self._image_cache:
-            self._cache_hits += 1
-            logger.debug(f"图片描述命中缓存: {image_url[:50]}...")
-            return self._image_cache[image_url]
-        
-        self._cache_misses += 1
-        
-        # 使用信号量控制并发
-        async with self._image_semaphore:
-            # 添加请求延迟，避免过于频繁
-            if self.image_request_delay > 0:
-                await asyncio.sleep(self.image_request_delay)
+        try:
+            # 检查是否启用图片描述
+            if not self.enable_image_description:
+                return "[图片]"
             
-            try:
-                provider = self.context.get_using_provider()
+            # 检查缓存
+            if image_url in self._image_cache:
+                self._cache_hits += 1
+                logger.debug(f"图片描述命中缓存: {image_url[:50]}...")
+                return self._image_cache[image_url]
+            
+            self._cache_misses += 1
+            
+            # 使用信号量控制并发
+            async with self._image_semaphore:
+                # 添加请求延迟，避免过于频繁
+                if self.image_request_delay > 0:
+                    await asyncio.sleep(self.image_request_delay)
                 
-                # 检查 provider 是否支持图片
-                supports_image = False
-                provider_config = getattr(provider, "provider_config", {})
                 try:
-                    modalities = provider_config.get("modalities", None)
-                    if isinstance(modalities, (list, tuple)):
-                        ml = [str(m).lower() for m in modalities]
-                        if any(k in ml for k in ["image", "vision", "multimodal"]):
-                            supports_image = True
-                except Exception:
-                    pass
+                    provider = self.context.get_using_provider()
+                    
+                    # 检查 provider 是否支持图片
+                    supports_image = False
+                    provider_config = getattr(provider, "provider_config", {})
+                    try:
+                        modalities = provider_config.get("modalities", None)
+                        if isinstance(modalities, (list, tuple)):
+                            ml = [str(m).lower() for m in modalities]
+                            if any(k in ml for k in ["image", "vision", "multimodal"]):
+                                supports_image = True
+                    except Exception:
+                        pass
 
-                if not supports_image:
-                    logger.warning("当前LLM不支持视觉能力，跳过图片描述")
-                    result = "[图片]"
+                    if not supports_image:
+                        logger.warning("当前LLM不支持视觉能力，跳过图片描述")
+                        result = "[图片]"
+                        self._manage_cache(image_url, result)
+                        return result
+
+                    # 调用 LLM
+                    llm_response = await provider.text_chat(
+                        prompt=prompt,
+                        context=[],
+                        system_prompt="你是一个图片描述助手，请简洁准确地描述图片内容。",
+                        image_urls=[image_url],
+                    )
+
+                    # 提取文本
+                    description = llm_response.completion_text
+
+                    if description and description != "（未解析到可读内容）":
+                        logger.info(
+                            f"图片描述成功: {image_url[:50]}... -> {description[:30]}..."
+                        )
+                        result = f"[图片: {description}]"
+                    else:
+                        logger.warning(f"图片描述为空: {image_url[:50]}...")
+                        result = "[图片]"
+                    
+                    # 缓存结果
                     self._manage_cache(image_url, result)
                     return result
 
-                # 调用 LLM
-                llm_response = await provider.text_chat(
-                    prompt=prompt,
-                    context=[],
-                    system_prompt="你是一个图片描述助手，请简洁准确地描述图片内容。",
-                    image_urls=[image_url],
-                )
-
-                # 提取文本
-                description = llm_response.completion_text
-
-                if description and description != "（未解析到可读内容）":
-                    logger.info(
-                        f"图片描述成功: {image_url[:50]}... -> {description[:30]}..."
-                    )
-                    result = f"[图片: {description}]"
-                else:
-                    logger.warning(f"图片描述为空: {image_url[:50]}...")
+                except Exception as e:
+                    self._failed_requests += 1
+                    error_msg = str(e)
+                    
+                    # 检查是否是 429 错误
+                    if "429" in error_msg or "Request limit exceeded" in error_msg:
+                        logger.warning(f"图片描述请求限制: {error_msg}，已跳过该图片")
+                    else:
+                        logger.error(f"获取图片描述失败: {e}")
+                    
+                    # 缓存失败结果，避免重复请求
                     result = "[图片]"
-                
-                # 缓存结果
-                self._manage_cache(image_url, result)
-                return result
-
-            except Exception as e:
-                self._failed_requests += 1
-                error_msg = str(e)
-                
-                # 检查是否是 429 错误
-                if "429" in error_msg or "Request limit exceeded" in error_msg:
-                    logger.warning(f"图片描述请求限制: {error_msg}，已跳过该图片")
-                else:
-                    logger.error(f"获取图片描述失败: {e}")
-                
-                # 缓存失败结果，避免重复请求
-                result = "[图片]"
-                self._manage_cache(image_url, result)
-                return result
+                    self._manage_cache(image_url, result)
+                    return result
+        except Exception as e:
+            # 最外层保护：确保任何未预期的异常都不会传播
+            logger.error(f"图片描述出现未预期的错误（已降级）: {e}")
+            self._failed_requests += 1
+            return "[图片]"
     
     def get_cache_stats(self) -> dict:
         """获取缓存统计信息"""
