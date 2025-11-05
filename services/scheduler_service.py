@@ -10,10 +10,15 @@ class SchedulerService:
     """定时任务服务：负责管理定时总结任务"""
 
     def __init__(
-        self, context, config, summary_orchestrator: SummaryOrchestrator
+        self,
+        context,
+        config,
+        summary_service,
+        summary_orchestrator: SummaryOrchestrator,
     ):
         self.context = context
         self.config = config
+        self.summary_service = summary_service
         self.summary_orchestrator = summary_orchestrator
         self.scheduled_tasks = []
 
@@ -108,8 +113,27 @@ class SchedulerService:
 
         # 使用编排服务创建总结和图片
         try:
-            summary, summary_image_url = await self.summary_orchestrator.create_summary_with_image(
-                client, group_id, interval, my_id
+            messages, status_message = await self.summary_service.get_messages_by_arg(
+                client,
+                int(group_id),
+                interval,
+            )
+
+            if messages is None:
+                logger.error(
+                    "群 %s 定时总结获取消息失败: %s",
+                    group_id,
+                    status_message,
+                )
+                return
+
+            summary, summary_image_url = (
+                await self.summary_orchestrator.create_summary_with_image(
+                    str(group_id),
+                    my_id,
+                    messages,
+                    source=f"schedule:{interval}",
+                )
             )
         except ValueError as e:
             logger.error(f"参数错误: {e}")

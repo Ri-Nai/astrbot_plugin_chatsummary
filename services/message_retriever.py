@@ -60,7 +60,7 @@ class MessageRetriever:
             if not has_new_message or time_order_than_target:
                 break
 
-        return reversed(all_messages)
+        return list(reversed(all_messages))
 
     async def get_messages_by_count(
         self,

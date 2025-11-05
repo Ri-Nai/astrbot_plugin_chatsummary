@@ -61,6 +61,9 @@ class ChatHandler:
         )
         yield event.plain_result(status_message)
 
+        if messages is None:
+            return
+
         if not messages:
             yield event.plain_result("在指定范围内没有找到可以总结的聊天记录。")
             return
@@ -69,10 +72,10 @@ class ChatHandler:
         try:
             summary_text, summary_image_url = (
                 await self.summary_orchestrator.create_summary_with_image(
-                    client,
                     str(group_id),
-                    arg,
                     my_id,
+                    messages,
+                    source=str(arg),
                 )
             )
             yield event.chain_result(

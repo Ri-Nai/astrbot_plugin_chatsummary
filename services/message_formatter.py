@@ -1,9 +1,39 @@
 # /astrbot_plugin_chatsummary/services/message_formatter.py
 
 import json
+from dataclasses import dataclass
 from datetime import datetime
+from typing import Any, Awaitable, Callable, Dict, Optional, TYPE_CHECKING
+
 from astrbot.api import logger
+
 from ..utils import JsonMessageParser
+
+if TYPE_CHECKING:
+    from .llm_service import LLMService
+
+
+@dataclass(frozen=True)
+class MessagePartContext:
+    """封装消息段处理所需的上下文信息"""
+
+    my_id: int
+    part: Dict[str, Any]
+    all_messages: list
+    indent: int
+    llm_service: "LLMService | None"
+
+    @property
+    def data(self) -> Dict[str, Any]:
+        raw = self.part.get("data", {})
+        return raw if isinstance(raw, dict) else {}
+
+    @property
+    def indent_str(self) -> str:
+        return " " * self.indent
+
+
+PartHandler = Callable[[MessagePartContext], Awaitable[str]]
 
 
 class MessageFormatter:
@@ -11,6 +41,15 @@ class MessageFormatter:
 
     def __init__(self, config):
         self.config = config
+        self._part_handlers: Dict[str, PartHandler] = {
+            "text": self._handle_text_part,
+            "image": self._handle_image_part,
+            "video": self._handle_video_part,
+            "face": self._handle_face_part,
+            "reply": self._handle_reply_part,
+            "json": self._handle_json_part,
+            "forward": self._handle_forward_part,
+        }
 
     async def _collect_message_text(
         self,
@@ -28,17 +67,22 @@ class MessageFormatter:
         collected_parts: list[str] = []
 
         for part in message_parts:
+            if not isinstance(part, dict):
+                continue
+
             if skip_reply and part.get("type") == "reply":
                 continue
 
+            context = MessagePartContext(
+                my_id=my_id,
+                part=part,
+                all_messages=all_messages,
+                indent=current_indent,
+                llm_service=llm_service,
+            )
+
             try:
-                part_text = await self._format_message_part(
-                    my_id,
-                    part,
-                    all_messages,
-                    current_indent,
-                    llm_service,
-                )
+                part_text = await self._format_message_part(context)
                 if part_text:
                     collected_parts.append(part_text)
             except Exception as e:
@@ -68,106 +112,118 @@ class MessageFormatter:
         url_lower = url.lower()
         return url_lower.startswith("http://") or url_lower.startswith("https://")
 
-    async def _format_message_part(self, my_id: int, part: dict, messages: list, current_indent: int, llm_service=None) -> str:
-        """格式化单个消息部分"""
-        part_type = part.get("type")
-        data = part.get("data", {})
-        indent_str = " " * current_indent
+    async def _format_message_part(self, context: MessagePartContext) -> str:
+        """基于注册表分发消息段处理逻辑"""
+        part_type = context.part.get("type")
+        handler = self._part_handlers.get(part_type, self._handle_unknown_part)
+        return await handler(context)
 
-        if part_type == "text":
-            return data.get("text", "").strip()
-        elif part_type == "image":
-            # 如果提供了 llm_service，则调用LLM获取图片描述
-            if llm_service:
-                img_url = self._extract_image_url(data)
-                if img_url and self._is_valid_image_url(img_url):
-                    try:
-                        logger.info(f"正在为图片获取描述: {img_url[:50]}...")
-                        description = await llm_service.get_image_description(img_url)
-                        return description
-                    except Exception as e:
-                        # 双重保护：即使 get_image_description 内部失败，这里也能捕获
-                        logger.warning(f"图片描述失败（已降级）: {img_url[:50]}... - {e}")
-                        return "[图片]"
-            return "[图片]"
-        elif part_type == "video":
-            return "[视频]"
-        elif part_type == "face":
-            return "[表情]"
-        elif part_type == "reply":
-            reply_id = data.get("id")
-            replied_message = None
+    async def _handle_text_part(self, context: MessagePartContext) -> str:
+        return context.data.get("text", "").strip()
 
-            if reply_id is not None and isinstance(messages, list):
-                reply_id_str = str(reply_id)
-                for candidate in messages:
-                    candidate_id_match = (
-                        reply_id_str == str(candidate.get("message_id"))
-                        or reply_id_str == str(candidate.get("message_seq"))
-                        or reply_id_str == str(candidate.get("id"))
+    async def _handle_image_part(self, context: MessagePartContext) -> str:
+        llm_service = context.llm_service
+        if llm_service:
+            img_url = self._extract_image_url(context.data)
+            if img_url and self._is_valid_image_url(img_url):
+                try:
+                    logger.info(f"正在为图片获取描述: {img_url[:50]}...")
+                    description = await llm_service.get_image_description(img_url)
+                    return description
+                except Exception as e:
+                    logger.warning(
+                        f"图片描述失败（已降级）: {img_url[:50]}... - {e}"
                     )
-                    if candidate_id_match:
-                        replied_message = candidate
-                        break
+        return "[图片]"
 
-            reply_sender = ""
-            reply_content = ""
+    async def _handle_video_part(self, context: MessagePartContext) -> str:  # noqa: D401
+        return "[视频]"
 
-            if replied_message:
-                reply_sender = self._get_sender_display_name(
-                    replied_message.get("sender", {})
-                )
-                reply_content = await self._collect_message_text(
-                    my_id,
-                    replied_message.get("message", []),
-                    messages,
-                    current_indent,
-                    llm_service,
-                    skip_reply=True,
-                )
-                if not reply_content:
-                    raw_message = replied_message.get("raw_message")
-                    if isinstance(raw_message, str):
-                        reply_content = raw_message.strip()
-            else:
-                nickname = data.get("nickname") or data.get("name")
-                if isinstance(nickname, str) and nickname.strip():
-                    reply_sender = nickname.strip()
-                else:
-                    reply_sender_id = data.get("qq") or data.get("user_id")
-                    if reply_sender_id:
-                        reply_sender = str(reply_sender_id)
+    async def _handle_face_part(self, context: MessagePartContext) -> str:  # noqa: D401
+        return "[表情]"
 
-                fallback_text = data.get("text")
-                if isinstance(fallback_text, str) and fallback_text.strip():
-                    reply_content = fallback_text.strip()
+    async def _handle_reply_part(self, context: MessagePartContext) -> str:
+        reply_id = context.data.get("id")
+        replied_message = self._find_replied_message(reply_id, context.all_messages)
 
-            if reply_content:
-                return f"[回复消息: {reply_sender}: {reply_content}]"
-            elif reply_sender:
-                return f"[回复消息: {reply_sender}]"
-            else:
-                return "[回复消息]"
-        elif part_type == "json":
-            try:
-                json_data = json.loads(data.get("data", "{}"))
-                return f"\n{JsonMessageParser.parse_json(json_data, current_indent + 2)}\n{indent_str}"
-            except json.JSONDecodeError:
-                return "[无法读取的分享内容]"
-        elif part_type == "forward":
-            forward_msg_list = data.get("content", [])
-            formatted_forward = await self.format_messages(
-                forward_msg_list,
-                my_id,
-                indent=current_indent + 2,
-                llm_service=llm_service,
+        reply_sender = ""
+        reply_content = ""
+
+        if replied_message:
+            reply_sender = self._get_sender_display_name(
+                replied_message.get("sender", {})
             )
-            return (
-                f"\n{indent_str}{{\n"
-                f"{formatted_forward}\n"
-                f"{indent_str}}}"
+            reply_content = await self._collect_message_text(
+                context.my_id,
+                replied_message.get("message", []),
+                context.all_messages,
+                context.indent,
+                context.llm_service,
+                skip_reply=True,
             )
-        return "" # 未知消息类型
+            if not reply_content:
+                raw_message = replied_message.get("raw_message")
+                if isinstance(raw_message, str):
+                    reply_content = raw_message.strip()
+        else:
+            nickname = context.data.get("nickname") or context.data.get("name")
+            if isinstance(nickname, str) and nickname.strip():
+                reply_sender = nickname.strip()
+            else:
+                reply_sender_id = context.data.get("qq") or context.data.get("user_id")
+                if reply_sender_id:
+                    reply_sender = str(reply_sender_id)
+
+            fallback_text = context.data.get("text")
+            if isinstance(fallback_text, str) and fallback_text.strip():
+                reply_content = fallback_text.strip()
+
+        if reply_content:
+            return f"[回复消息: {reply_sender}: {reply_content}]"
+        if reply_sender:
+            return f"[回复消息: {reply_sender}]"
+        return "[回复消息]"
+
+    async def _handle_json_part(self, context: MessagePartContext) -> str:
+        try:
+            json_data = json.loads(context.data.get("data", "{}"))
+            parsed = JsonMessageParser.parse_json(json_data, context.indent + 2)
+            return f"\n{parsed}\n{context.indent_str}"
+        except json.JSONDecodeError:
+            return "[无法读取的分享内容]"
+
+    async def _handle_forward_part(self, context: MessagePartContext) -> str:
+        forward_msg_list = context.data.get("content", [])
+        formatted_forward = await self.format_messages(
+            forward_msg_list,
+            context.my_id,
+            indent=context.indent + 2,
+            llm_service=context.llm_service,
+        )
+        return (
+            f"\n{context.indent_str}{{\n"
+            f"{formatted_forward}\n"
+            f"{context.indent_str}}}"
+        )
+
+    async def _handle_unknown_part(self, context: MessagePartContext) -> str:  # noqa: D401
+        return ""
+
+    def _find_replied_message(self, reply_id: Any, messages: list) -> Optional[dict]:
+        if reply_id is None or not isinstance(messages, list):
+            return None
+
+        reply_id_str = str(reply_id)
+        for candidate in messages:
+            if not isinstance(candidate, dict):
+                continue
+            candidate_id_match = any(
+                reply_id_str == str(candidate.get(key))
+                for key in ("message_id", "message_seq", "id")
+            )
+            if candidate_id_match:
+                return candidate
+        return None
 
     async def format_messages(self, messages: list, my_id: int, indent: int = 0, llm_service=None) -> str:
         """

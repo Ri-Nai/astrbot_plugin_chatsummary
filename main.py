@@ -38,7 +38,10 @@ class ChatSummary(Star):
 
         # 4. 初始化调度服务
         self.scheduler_service = SchedulerService(
-            self.context, self.config, self.summary_orchestrator
+            self.context,
+            self.config,
+            self.summary_service,
+            self.summary_orchestrator,
         )
 
         # 5. 初始化处理器层

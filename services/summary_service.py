@@ -1,10 +1,11 @@
 # /astrbot_plugin_chatsummary/services/summary_service.py
 
 from datetime import timedelta
-from astrbot.api import logger
+from typing import Iterable
+
 from ..utils import parse_time_delta
-from .message_retriever import MessageRetriever
 from .message_formatter import MessageFormatter
+from .message_retriever import MessageRetriever
 
 
 class SummaryService:
@@ -17,8 +18,6 @@ class SummaryService:
         self.config = config
         self.message_retriever = MessageRetriever()
         self.message_formatter = MessageFormatter(config)
-
-
 
     async def get_messages_by_arg(
         self,
@@ -48,7 +47,7 @@ class SummaryService:
                 group_id,
                 time_delta,
             )
-            return messages, status_message
+            return self._ensure_list(messages), status_message
         elif arg.isdigit():
             count = int(arg)
             if not (0 < count <= 500):
@@ -61,13 +60,16 @@ class SummaryService:
                 group_id,
                 count,
             )
-            return messages, status_message
+            return self._ensure_list(messages), status_message
         else:
             return (
                 None,
                 "参数格式不正确哦~\n请使用如「 /消息总结 30 」(数量) 或「 /消息总结 1h30m 」(时间) 的格式。",
             )
-    async def format_messages(self, messages: list, my_id: int, llm_service=None, indent: int = 0) -> str:
+
+    async def format_messages(
+        self, messages: list, my_id: int, llm_service=None, indent: int = 0
+    ) -> str:
         """
         将从API获取的消息列表格式化为文本
 
@@ -80,7 +82,12 @@ class SummaryService:
         Returns:
             格式化后的聊天文本
         """
-        return await self.message_formatter.format_messages(messages, my_id, indent, llm_service)
+        return await self.message_formatter.format_messages(
+            messages,
+            my_id,
+            indent,
+            llm_service,
+        )
 
     async def get_messages_by_time(
         self, client, group_id: int, time_delta: timedelta
@@ -96,7 +103,12 @@ class SummaryService:
         Returns:
             消息列表
         """
-        return await self.message_retriever.get_messages_by_time(client, group_id, time_delta)
+        messages = await self.message_retriever.get_messages_by_time(
+            client,
+            group_id,
+            time_delta,
+        )
+        return self._ensure_list(messages)
 
     async def get_messages_by_count(
         self,
@@ -115,4 +127,17 @@ class SummaryService:
         Returns:
             消息列表
         """
-        return await self.message_retriever.get_messages_by_count(client, group_id, count)
+        messages = await self.message_retriever.get_messages_by_count(
+            client,
+            group_id,
+            count,
+        )
+        return self._ensure_list(messages)
+
+    @staticmethod
+    def _ensure_list(messages: Iterable | None) -> list:
+        if messages is None:
+            return []
+        if isinstance(messages, list):
+            return messages
+        return list(messages)
