@@ -15,17 +15,17 @@ class PluginConfig:
         self.default_prompt = "请总结以下聊天记录："
         self.default_html_template = "base"  # 默认HTML渲染模板
         self.wake_prefix = []
-        
+
         # 图片描述配置
         self.enable_image_description = True
         self.image_description_cache_size = 100
         self.max_concurrent_image_requests = 3
         self.image_request_delay = 0.5
-        
+
         # 总结重试配置
         self.summary_max_retries = 2
         self.summary_retry_delay = 2.0
-        
+
         self._data = {}
         self._groups = {}  # 存储群组配置
 
@@ -66,7 +66,7 @@ class PluginConfig:
         # 先获取 default_prompt，如果没有则使用内置默认值
         default_prompt_value = self._data.get("default_prompt", self.default_prompt)
         self.default_prompt = str(default_prompt_value).replace("\\n", "\n")
-    
+
     def _sync_image_config(self) -> None:
         """同步图片描述和总结重试相关配置"""
         self.enable_image_description = self._data.get(

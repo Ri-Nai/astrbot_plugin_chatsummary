@@ -69,12 +69,22 @@ class LLMService:
                     prompt=prompt,
                     contexts=[{"role": "user", "content": formatted_chat}],
                 )
-                
+
+                completion_text = self._extract_completion_text(llm_response)
+                if completion_text is None:
+                    logger.warning(
+                        "LLM返回内容为空，将视为失败并尝试重试（attempt=%s）",
+                        attempt,
+                    )
+                    if attempt < max_retries:
+                        continue
+                    raise RuntimeError("API 返回的 candidate.content.parts 为空。")
+
                 # 调用成功
                 if attempt > 0:
                     logger.info(f"LLM调用在第 {attempt} 次重试后成功")
-                
-                return llm_response.completion_text
+
+                return completion_text
                 
             except Exception as e:
                 error_msg = str(e)
@@ -225,3 +235,17 @@ class LLMService:
             "failed_requests": self._failed_requests,
             "hit_rate": f"{hit_rate:.2f}%",
         }
+
+    @staticmethod
+    def _extract_completion_text(response) -> str | None:
+        """安全提取模型返回的文本，若为空则返回 None"""
+        try:
+            completion_text = getattr(response, "completion_text", None)
+        except Exception:
+            return None
+
+        if completion_text is None:
+            return None
+
+        completion_text = str(completion_text).strip()
+        return completion_text or None
