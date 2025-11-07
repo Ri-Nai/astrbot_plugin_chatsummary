@@ -88,21 +88,66 @@ class LLMService:
                 
             except Exception as e:
                 error_msg = str(e)
+                lower_msg = error_msg.lower()
                 last_error = e
-                
-                # 检查是否是 429 错误
-                if "429" in error_msg or "Request limit exceeded" in error_msg or "rate limit" in error_msg.lower():
-                    logger.warning(f"LLM调用遇到请求限制 (429)：{error_msg}")
-                    # 如果还有重试机会，继续；否则退出循环
+
+                rate_limit_keywords = [
+                    "429",
+                    "request limit exceeded",
+                    "too many requests",
+                    "rate limit",
+                ]
+                transient_keywords = [
+                    "503",
+                    "unavailable",
+                    "overloaded",
+                    "temporarily",
+                    "timeout",
+                    "timed out",
+                    "try again later",
+                    "internal server error",
+                    "bad gateway",
+                    "gateway timeout",
+                ]
+
+                is_rate_limit = any(keyword in lower_msg for keyword in rate_limit_keywords)
+                is_transient = is_rate_limit or any(
+                    keyword in lower_msg for keyword in transient_keywords
+                )
+
+                current_try = attempt + 1
+                total_tries = max_retries + 1
+
+                if is_rate_limit:
+                    logger.warning(
+                        f"LLM调用遇到请求限制 ({current_try}/{total_tries})：{error_msg}"
+                    )
                     if attempt < max_retries:
                         continue
-                    else:
-                        logger.error("LLM调用已达到最大重试次数，仍然遇到请求限制")
-                        raise Exception("请求过于频繁，请稍后再试。建议降低图片描述功能的并发数或增加延迟。") from e
-                else:
-                    # 非 429 错误，直接抛出
-                    logger.error(f"调用LLM服务失败: {e}")
+
+                    logger.error("LLM调用已达到最大重试次数，仍然遇到请求限制")
+                    raise Exception(
+                        "请求过于频繁，请稍后再试。建议降低图片描述功能的并发数或增加延迟。"
+                    ) from e
+
+                if is_transient:
+                    logger.warning(
+                        f"LLM调用出现临时性错误 ({current_try}/{total_tries})：{error_msg}"
+                    )
+                    if attempt < max_retries:
+                        continue
+
+                    logger.error("LLM调用已达到最大重试次数，仍然出现临时性错误")
                     raise
+
+                if attempt < max_retries:
+                    logger.warning(
+                        f"LLM调用失败 ({current_try}/{total_tries})：{error_msg}，将继续尝试重试"
+                    )
+                    continue
+
+                logger.error(f"调用LLM服务失败: {e}")
+                raise
         
         # 所有重试都失败
         if last_error:
