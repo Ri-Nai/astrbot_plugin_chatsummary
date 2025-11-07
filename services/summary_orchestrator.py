@@ -5,6 +5,15 @@ from typing import Iterable
 from astrbot.api import html_renderer, logger
 
 
+class SummaryGenerationError(RuntimeError):
+    """总结生成异常，包含用户可读信息"""
+
+    def __init__(self, message: str, *, user_message: str, rate_limited: bool = False):
+        super().__init__(message)
+        self.user_message = user_message
+        self.rate_limited = rate_limited
+
+
 class SummaryOrchestrator:
     """总结编排服务：负责协调整个总结流程，不依赖同层其他Service"""
 
@@ -25,6 +34,7 @@ class SummaryOrchestrator:
         messages: Iterable | None,
         *,
         source: str | None = None,
+        raise_on_failure: bool = False,
     ) -> tuple[str, str]:
         """基于已有消息生成总结与图片"""
 
@@ -62,7 +72,11 @@ class SummaryOrchestrator:
         if not formatted_chat:
             summary = "筛选后没有可供总结的聊天内容。"
         else:
-            summary = await self._generate_summary(formatted_chat, group_config)
+            summary = await self._generate_summary(
+                formatted_chat,
+                group_config,
+                raise_on_failure=raise_on_failure,
+            )
 
         cleaned_summary = self._cleanup_summary(summary)
         summary_image_url = await self._render_summary_image(
@@ -79,7 +93,13 @@ class SummaryOrchestrator:
         )
         return self.llm_service if enable_image_description else None
 
-    async def _generate_summary(self, formatted_chat: str, group_config: dict) -> str:
+    async def _generate_summary(
+        self,
+        formatted_chat: str,
+        group_config: dict,
+        *,
+        raise_on_failure: bool = False,
+    ) -> str:
         prompt = group_config.get("summary_prompt", self.config.default_prompt)
         try:
             return await self.llm_service.get_summary(
@@ -93,7 +113,7 @@ class SummaryOrchestrator:
             logger.error("调用LLM失败: %s", error_msg)
 
             if self._is_rate_limit_error(error_msg):
-                return (
+                user_message = (
                     "⚠️ 总结失败：API 请求频率超限\n\n"
                     "可能的原因：\n"
                     "1. 图片描述功能调用过于频繁\n"
@@ -105,7 +125,27 @@ class SummaryOrchestrator:
                     "• 等待几分钟后重试"
                 )
 
-            return f"⚠️ 总结失败：{error_msg}\n\n请检查 LLM 配置或稍后重试。"
+                if raise_on_failure:
+                    raise SummaryGenerationError(
+                        error_msg,
+                        user_message=user_message,
+                        rate_limited=True,
+                    ) from e
+
+                return user_message
+
+            user_message = (
+                f"⚠️ 总结失败：{error_msg}\n\n请检查 LLM 配置或稍后重试。"
+            )
+
+            if raise_on_failure:
+                raise SummaryGenerationError(
+                    error_msg,
+                    user_message=user_message,
+                    rate_limited=False,
+                ) from e
+
+            return user_message
 
     @staticmethod
     def _cleanup_summary(summary: str) -> str:

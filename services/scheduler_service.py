@@ -3,7 +3,7 @@
 import asyncio
 from datetime import datetime, timedelta
 from astrbot.api import logger, html_renderer
-from .summary_orchestrator import SummaryOrchestrator
+from .summary_orchestrator import SummaryOrchestrator, SummaryGenerationError
 
 
 class SchedulerService:
@@ -118,30 +118,93 @@ class SchedulerService:
                 int(group_id),
                 interval,
             )
-
-            if messages is None:
-                logger.error(
-                    "群 %s 定时总结获取消息失败: %s",
-                    group_id,
-                    status_message,
-                )
-                return
-
-            summary, summary_image_url = (
-                await self.summary_orchestrator.create_summary_with_image(
-                    str(group_id),
-                    my_id,
-                    messages,
-                    source=f"schedule:{interval}",
-                )
-            )
         except ValueError as e:
             logger.error(f"参数错误: {e}")
             return
         except Exception as e:
-            logger.error(f"生成总结失败: {e}")
-            summary = "抱歉,总结服务出现了一点问题。"
-            # 使用默认模板生成错误图片
+            logger.error(f"获取聊天记录失败: {e}")
+            return
+
+        if messages is None:
+            logger.error(
+                "群 %s 定时总结获取消息失败: %s",
+                group_id,
+                status_message,
+            )
+            return
+
+        summary = None
+        summary_image_url = None
+        last_error: Exception | None = None
+
+        configured_attempts = getattr(
+            self.config,
+            "scheduled_summary_max_attempts",
+            None,
+        )
+        if isinstance(configured_attempts, int) and configured_attempts > 0:
+            max_attempts = configured_attempts
+        else:
+            max_attempts = max(1, getattr(self.config, "summary_max_retries", 0) + 1)
+
+        retry_delay = max(getattr(self.config, "summary_retry_delay", 0.0), 0.0)
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                summary, summary_image_url = (
+                    await self.summary_orchestrator.create_summary_with_image(
+                        str(group_id),
+                        my_id,
+                        messages,
+                        source=f"schedule:{interval}",
+                        raise_on_failure=True,
+                    )
+                )
+                break
+            except SummaryGenerationError as e:
+                last_error = e
+                logger.warning(
+                    "群 %s 定时总结第 %s/%s 次尝试失败：%s",
+                    group_id,
+                    attempt,
+                    max_attempts,
+                    e,
+                )
+            except Exception as e:
+                last_error = e
+                logger.error(
+                    "群 %s 定时总结出现异常（第 %s/%s 次尝试）：%s",
+                    group_id,
+                    attempt,
+                    max_attempts,
+                    e,
+                )
+
+            if attempt < max_attempts and retry_delay > 0:
+                wait_seconds = retry_delay * (2 ** (attempt - 1))
+                if wait_seconds > 0:
+                    logger.info(
+                        "群 %s 定时总结将在 %.1f 秒后重试",
+                        group_id,
+                        wait_seconds,
+                    )
+                    await asyncio.sleep(wait_seconds)
+
+        if summary is None or summary_image_url is None:
+            if last_error:
+                logger.error(
+                    "群 %s 定时总结多次失败，使用降级结果：%s",
+                    group_id,
+                    last_error,
+                )
+            else:
+                logger.error("群 %s 定时总结结果为空，使用降级结果", group_id)
+
+            if isinstance(last_error, SummaryGenerationError):
+                summary = last_error.user_message
+            else:
+                summary = "抱歉,总结服务出现了一点问题。"
+
             group_config = self.config.get_group_config(str(group_id))
             html_template = group_config.get(
                 "html_renderer_template",
