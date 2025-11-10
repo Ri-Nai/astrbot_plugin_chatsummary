@@ -123,7 +123,8 @@ class MessageFormatter:
 
     async def _handle_image_part(self, context: MessagePartContext) -> str:
         llm_service = context.llm_service
-        if llm_service:
+        image_summary = context.data.get("summary", "")
+        if llm_service and not image_summary:
             img_url = self._extract_image_url(context.data)
             if img_url and self._is_valid_image_url(img_url):
                 try:
