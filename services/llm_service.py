@@ -5,6 +5,22 @@ from typing import Dict
 from astrbot.api import logger
 
 
+class LLMError(Exception):
+    """LLM 调用相关的通用异常"""
+
+
+class LLMRateLimitError(LLMError):
+    """表示LLM接口触发限流"""
+
+
+class LLMTransientError(LLMError):
+    """表示LLM接口出现临时性故障（可重试）"""
+
+
+class LLMEmptyResponseError(LLMError):
+    """表示LLM返回了空内容"""
+
+
 class LLMService:
     """LLM 服务：负责与大语言模型交互"""
 
@@ -78,7 +94,7 @@ class LLMService:
                     )
                     if attempt < max_retries:
                         continue
-                    raise RuntimeError("API 返回的 candidate.content.parts 为空。")
+                    raise LLMEmptyResponseError("API 返回的 candidate.content.parts 为空。")
 
                 # 调用成功
                 if attempt > 0:
@@ -86,6 +102,8 @@ class LLMService:
 
                 return completion_text
                 
+            except LLMEmptyResponseError:
+                raise
             except Exception as e:
                 error_msg = str(e)
                 lower_msg = error_msg.lower()
@@ -126,7 +144,7 @@ class LLMService:
                         continue
 
                     logger.error("LLM调用已达到最大重试次数，仍然遇到请求限制")
-                    raise Exception(
+                    raise LLMRateLimitError(
                         "请求过于频繁，请稍后再试。建议降低图片描述功能的并发数或增加延迟。"
                     ) from e
 
@@ -138,7 +156,7 @@ class LLMService:
                         continue
 
                     logger.error("LLM调用已达到最大重试次数，仍然出现临时性错误")
-                    raise
+                    raise LLMTransientError(error_msg) from e
 
                 if attempt < max_retries:
                     logger.warning(

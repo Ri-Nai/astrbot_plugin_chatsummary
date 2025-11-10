@@ -4,6 +4,12 @@ from typing import Iterable
 
 from astrbot.api import html_renderer, logger
 
+from .llm_service import (
+    LLMEmptyResponseError,
+    LLMRateLimitError,
+    LLMTransientError,
+)
+
 
 class SummaryGenerationError(RuntimeError):
     """总结生成异常，包含用户可读信息"""
@@ -18,9 +24,9 @@ class SummaryOrchestrator:
     """总结编排服务：负责协调整个总结流程，不依赖同层其他Service"""
 
     def __init__(
-        self,
-        config,
-        summary_service,
+        self, 
+        config, 
+        summary_service, 
         llm_service,
     ):
         self.config = config
@@ -28,8 +34,8 @@ class SummaryOrchestrator:
         self.llm_service = llm_service
 
     async def create_summary_with_image(
-        self,
-        group_id: str,
+        self, 
+        group_id: str, 
         my_id: int,
         messages: Iterable | None,
         *,
@@ -51,7 +57,8 @@ class SummaryOrchestrator:
             return summary, summary_image_url
 
         llm_for_image = self._resolve_image_llm(group_config)
-        if llm_for_image:
+        images_enabled = llm_for_image is not None
+        if images_enabled:
             logger.info("启用图片描述功能，将为每张图片调用LLM获取描述")
 
         formatted_chat = await self.summary_service.format_messages(
@@ -59,6 +66,9 @@ class SummaryOrchestrator:
             my_id,
             llm_for_image,
         )
+        current_formatted_chat = formatted_chat
+        summary_notes: list[str] = []
+        degrade_info: tuple[str, bool] | None = None
 
         logger.info(
             "总结任务: group_id=%s source=%s formatted_length=%s",
@@ -72,13 +82,54 @@ class SummaryOrchestrator:
         if not formatted_chat:
             summary = "筛选后没有可供总结的聊天内容。"
         else:
-            summary = await self._generate_summary(
-                formatted_chat,
-                group_config,
-                raise_on_failure=raise_on_failure,
-            )
+            try:
+                summary = await self._generate_summary(
+                    formatted_chat,
+                    group_config,
+                )
+            except LLMRateLimitError as rate_error:
+                (
+                    summary,
+                    current_formatted_chat,
+                    extra_notes,
+                    degrade_info,
+                ) = await self._handle_rate_limit_retry(
+                    message_list=message_list,
+                    my_id=my_id,
+                    group_config=group_config,
+                    base_error=rate_error,
+                    formatted_chat=formatted_chat,
+                    images_enabled=images_enabled,
+                )
+                summary_notes.extend(extra_notes)
+            except (LLMTransientError, LLMEmptyResponseError) as transient_error:
+                logger.error("调用LLM失败: %s", transient_error)
+                degrade_info = (str(transient_error), False)
+                summary = self._build_failure_summary(
+                    str(transient_error),
+                    current_formatted_chat,
+                )
+            except Exception as unexpected_error:
+                logger.error("调用LLM失败(未分类): %s", unexpected_error)
+                degrade_info = (str(unexpected_error), False)
+                summary = self._build_failure_summary(
+                    str(unexpected_error),
+                    current_formatted_chat,
+                )
+
+        if summary_notes:
+            summary = f"{summary}\n\n" + "\n".join(summary_notes)
 
         cleaned_summary = self._cleanup_summary(summary)
+
+        if raise_on_failure and degrade_info is not None:
+            error_message, rate_limited = degrade_info
+            raise SummaryGenerationError(
+                error_message,
+                user_message=cleaned_summary,
+                rate_limited=rate_limited,
+            )
+
         summary_image_url = await self._render_summary_image(
             group_id,
             cleaned_summary,
@@ -93,59 +144,78 @@ class SummaryOrchestrator:
         )
         return self.llm_service if enable_image_description else None
 
+    async def _handle_rate_limit_retry(
+        self,
+        message_list: list,
+        my_id: int,
+        group_config: dict,
+        base_error: Exception,
+        formatted_chat: str,
+        *,
+        images_enabled: bool,
+    ) -> tuple[str, str, list[str], tuple[str, bool] | None]:
+        """限流时尝试在关闭图片描述后重试总结"""
+        error_text = str(base_error)
+        if not images_enabled:
+            logger.error("总结触发限流，但图片描述已关闭: %s", error_text)
+            summary = self._build_failure_summary(error_text, formatted_chat)
+            return summary, formatted_chat, [], (error_text, True)
+
+        logger.warning(
+            "总结触发限流，将关闭图片描述后重试: %s",
+            error_text,
+        )
+        notes = ["⚠️ 已自动关闭图片描述功能以避免触发限流。"]
+
+        no_image_chat = await self.summary_service.format_messages(
+            message_list,
+            my_id,
+            llm_service=None,
+        )
+
+        try:
+            summary = await self._generate_summary(no_image_chat, group_config)
+            return summary, no_image_chat, notes, None
+        except LLMRateLimitError as retry_rate_error:
+            retry_text = str(retry_rate_error)
+            logger.error(
+                "关闭图片描述后仍触发限流: %s",
+                retry_text,
+            )
+            notes.append("⚠️ 关闭图片描述后仍触发限流，已输出降级结果。")
+            summary = self._build_failure_summary(retry_text, no_image_chat)
+            return summary, no_image_chat, notes, (retry_text, True)
+        except (LLMTransientError, LLMEmptyResponseError) as retry_error:
+            retry_text = str(retry_error)
+            logger.error(
+                "关闭图片描述后总结仍失败: %s",
+                retry_text,
+            )
+            notes.append("⚠️ 关闭图片描述后仍无法生成自动总结。")
+            summary = self._build_failure_summary(retry_text, no_image_chat)
+            return summary, no_image_chat, notes, (retry_text, False)
+        except Exception as unexpected:
+            retry_text = str(unexpected)
+            logger.error(
+                "关闭图片描述后总结出现异常: %s",
+                retry_text,
+            )
+            notes.append("⚠️ 关闭图片描述后仍无法生成自动总结。")
+            summary = self._build_failure_summary(retry_text, no_image_chat)
+            return summary, no_image_chat, notes, (retry_text, False)
+
     async def _generate_summary(
         self,
         formatted_chat: str,
         group_config: dict,
-        *,
-        raise_on_failure: bool = False,
     ) -> str:
         prompt = group_config.get("summary_prompt", self.config.default_prompt)
-        try:
-            return await self.llm_service.get_summary(
-                formatted_chat,
-                prompt,
-                max_retries=self.config.summary_max_retries,
-                retry_delay=self.config.summary_retry_delay,
-            )
-        except Exception as e:
-            error_msg = str(e)
-            logger.error("调用LLM失败: %s", error_msg)
-
-            if self._is_rate_limit_error(error_msg):
-                user_message = (
-                    "⚠️ 总结失败：API 请求频率超限\n\n"
-                    "可能的原因：\n"
-                    "1. 图片描述功能调用过于频繁\n"
-                    "2. API 配额已用尽\n\n"
-                    "建议解决方案：\n"
-                    "• 降低图片描述并发数（配置项：max_concurrent_image_requests，建议设为 1-2）\n"
-                    "• 增加图片请求延迟（配置项：image_request_delay，建议设为 1.0-2.0）\n"
-                    "• 暂时关闭图片描述功能（配置项：enable_image_description，设为 false）\n"
-                    "• 等待几分钟后重试"
-                )
-
-                if raise_on_failure:
-                    raise SummaryGenerationError(
-                        error_msg,
-                        user_message=user_message,
-                        rate_limited=True,
-                    ) from e
-
-                return user_message
-
-            user_message = (
-                f"⚠️ 总结失败：{error_msg}\n\n请检查 LLM 配置或稍后重试。"
-            )
-
-            if raise_on_failure:
-                raise SummaryGenerationError(
-                    error_msg,
-                    user_message=user_message,
-                    rate_limited=False,
-                ) from e
-
-            return user_message
+        return await self.llm_service.get_summary(
+            formatted_chat,
+            prompt,
+            max_retries=self.config.summary_max_retries,
+            retry_delay=self.config.summary_retry_delay,
+        )
 
     @staticmethod
     def _cleanup_summary(summary: str) -> str:
@@ -177,17 +247,7 @@ class SummaryOrchestrator:
             summary,
             template_name=html_template,
         )
-
-    @staticmethod
-    def _is_rate_limit_error(error_msg: str) -> bool:
-        lowered = error_msg.lower()
-        return (
-            "429" in error_msg
-            or "request limit exceeded" in lowered
-            or "rate limit" in lowered
-            or "请求过于频繁" in error_msg
-        )
-
+        
     @staticmethod
     def _ensure_list(messages: Iterable | None) -> list:
         if messages is None:
@@ -195,3 +255,35 @@ class SummaryOrchestrator:
         if isinstance(messages, list):
             return messages
         return list(messages)
+
+    def _build_failure_summary(
+        self,
+        reason: str,
+        formatted_chat: str | None,
+        *,
+        excerpt_length: int = 800,
+    ) -> str:
+        parts = ["⚠️ 总结失败：系统暂时无法生成自动总结。"]
+        reason = reason.strip()
+        if reason:
+            parts.append(f"原因：{reason}")
+
+        excerpt = self._build_chat_excerpt(formatted_chat, excerpt_length)
+        if excerpt:
+            parts.append("以下为最近聊天摘录：")
+            parts.append(excerpt)
+
+        return "\n\n".join(parts).strip()
+
+    @staticmethod
+    def _build_chat_excerpt(
+        formatted_chat: str | None,
+        max_chars: int = 800,
+    ) -> str:
+        if not formatted_chat:
+            return ""
+
+        text = formatted_chat.strip()
+        if len(text) <= max_chars:
+            return text
+        return text[: max_chars - 1].rstrip() + "…"
