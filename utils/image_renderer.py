@@ -27,6 +27,51 @@ class ImageRenderer:
         self.base_url = os.getcwd()
         self.jinja_template = None
 
+    def _get_font_css(self):
+        """
+        Generate CSS for local fonts and system fallbacks.
+        """
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(current_dir)
+        fonts_dir = os.path.join(project_root, "miscs", "fonts")
+        
+        css_parts = []
+        font_families = []
+        
+        # 1. Load local fonts from miscs/fonts
+        if os.path.exists(fonts_dir):
+            for f in os.listdir(fonts_dir):
+                if f.lower().endswith(('.ttf', '.otf', '.woff', '.woff2')):
+                    path = os.path.join(fonts_dir, f)
+                    # WeasyPrint requires file:// URL
+                    path_url = f"file://{os.path.abspath(path)}"
+                    name = os.path.splitext(f)[0]
+                    
+                    css_parts.append(f"""
+    @font-face {{
+        font-family: "{name}";
+        src: url("{path_url}");
+    }}""")
+                    font_families.append(f'"{name}"')
+        
+        # 2. Add standard system fallbacks
+        # Put local fonts first
+        fallbacks = [
+            '"PingFang SC"', '"Hiragino Sans GB"', '"Microsoft YaHei"', 
+            '"WenQuanYi Micro Hei"', '"Noto Sans CJK SC"', "sans-serif"
+        ]
+        font_families.extend(fallbacks)
+        
+        css_parts.append(f"""
+    @page {{
+      margin: 0;
+    }}
+    body {{
+      font-family: {', '.join(font_families)} !important;
+    }}""")
+        
+        return "\n".join(css_parts)
+
     async def _load_template(self):
         if self.jinja_template:
             return
@@ -59,14 +104,8 @@ class ImageRenderer:
 
         # Ensure CSS @page margin is 0 for better stitching
         # And inject Chinese font support
-        extra_css = """
-    @page {
-      margin: 0;
-    }
-    body {
-      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", "Noto Sans CJK SC", sans-serif !important;
-    }
-    """
+        extra_css = self._get_font_css()
+        
         if '</style>' in self.template_content:
              self.template_content = self.template_content.replace('</style>', f'{extra_css}\n</style>')
         elif '<style>' in self.template_content:
