@@ -65,8 +65,11 @@ class ImageRenderer:
         css_parts.append(f"""
     @page {{
       margin: 0;
+      size: 210mm 5000mm; /* Long page to prevent splitting */
     }}
-    body {{
+    html, body {{
+      margin: 0;
+      padding: 0;
       font-family: {', '.join(font_families)} !important;
     }}""")
         
