@@ -246,10 +246,12 @@ class SummaryOrchestrator:
         )
         
         try:
+            # 优先尝试本地渲染
             renderer = ImageRenderer(template_name=html_template_name)
-            return renderer.render(summary, group_id=str(group_id))
+            return await renderer.render(summary, group_id=str(group_id))
         except Exception as e:
             logger.error(f"本地渲染失败，尝试使用远程渲染: {e}")
+            # 降级到远程渲染
             return await html_renderer.render_t2i(
                 summary,
                 template_name=html_template_name,

@@ -216,7 +216,7 @@ class SchedulerService:
             # Use local ImageRenderer with template name
             try:
                 renderer = ImageRenderer(template_name=html_template_name)
-                summary_image_url = renderer.render(summary, group_id=str(group_id))
+                summary_image_url = await renderer.render(summary, group_id=str(group_id))
                 
             except Exception as e:
                 logger.error(f"本地渲染失败，尝试使用远程渲染: {e}")

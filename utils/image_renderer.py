@@ -6,6 +6,7 @@ import fitz  # PyMuPDF
 from PIL import Image, ImageOps
 import io
 from datetime import datetime
+import asyncio
 
 try:
     from astrbot.api import html_renderer
@@ -20,20 +21,29 @@ class ImageRenderer:
         Args:
             template_name (str): The name of the template registered in AstrBot's html_renderer.
         """
+        self.template_name = template_name
         self.template_content = None
         self.base_url = os.getcwd()
+        self.jinja_template = None
 
-        if not template_name:
+    async def _load_template(self):
+        if self.jinja_template:
+            return
+
+        if not self.template_name:
              raise ValueError("template_name must be provided.")
 
         if html_renderer is None:
             raise RuntimeError("astrbot.api is not available, cannot load template by name.")
             
         # Fetch template content from AstrBot's registry
-        self.template_content = html_renderer.network_strategy.get_template(template_name)
+        content = html_renderer.network_strategy.get_template(self.template_name)
+        if asyncio.iscoroutine(content):
+            content = await content
+        self.template_content = content
         
         if not self.template_content:
-             raise ValueError(f"Could not load template content for name: {template_name}")
+             raise ValueError(f"Could not load template content for name: {self.template_name}")
 
         # Adapt template if it's the original one (with JS injection)
         if '<article id="content"></article>' in self.template_content:
@@ -60,6 +70,9 @@ class ImageRenderer:
             markdown_text (str): The Markdown content to render.
             output_path (str): The path to save the generated image (e.g., 'output.png').
         """
+        if not self.jinja_template:
+             raise RuntimeError("Template not loaded. Call render() first.")
+
         # 1. Convert Markdown to HTML
         # 'extra' supports tables, 'codehilite' supports code highlighting
         html_body = markdown.markdown(markdown_text, extensions=['extra', 'codehilite'])
@@ -117,7 +130,7 @@ class ImageRenderer:
         final_image.save(output_path)
         return output_path
 
-    def render(self, markdown_text: str, group_id: str = "default") -> str:
+    async def render(self, markdown_text: str, group_id: str = "default") -> str:
         """
         Render Markdown text to an image file and return the file URI.
         Automatically handles output path generation.
@@ -129,6 +142,8 @@ class ImageRenderer:
         Returns:
             str: The file URI of the generated image.
         """
+        await self._load_template()
+        
         output_dir = os.path.join(os.getcwd(), "data", "astrbot_plugin_chatsummary", "images")
         os.makedirs(output_dir, exist_ok=True)
         
