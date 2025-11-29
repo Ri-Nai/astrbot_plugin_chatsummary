@@ -2,5 +2,6 @@
 
 from .json_parser import JsonMessageParser
 from .time_parser import parse_time_delta
+from .image_renderer import ImageRenderer
 
-__all__ = ["JsonMessageParser", "parse_time_delta"]
+__all__ = ["JsonMessageParser", "parse_time_delta", "ImageRenderer"]

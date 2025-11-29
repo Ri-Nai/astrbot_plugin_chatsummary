@@ -4,6 +4,8 @@ import asyncio
 from datetime import datetime, timedelta
 from astrbot.api import logger, html_renderer
 from .summary_orchestrator import SummaryOrchestrator, SummaryGenerationError
+from ..utils import ImageRenderer
+import os
 
 
 class SchedulerService:
@@ -206,14 +208,23 @@ class SchedulerService:
                 summary = "抱歉,总结服务出现了一点问题。"
 
             group_config = self.config.get_group_config(str(group_id))
-            html_template = group_config.get(
+            html_template_name = group_config.get(
                 "html_renderer_template",
                 self.config.default_html_template,
             )
-            summary_image_url = await html_renderer.render_t2i(
-                summary,
-                template_name=html_template,
-            )
+            
+            # Use local ImageRenderer with template name
+            try:
+                renderer = ImageRenderer(template_name=html_template_name)
+                summary_image_url = renderer.render(summary, group_id=str(group_id))
+                
+            except Exception as e:
+                logger.error(f"本地渲染失败，尝试使用远程渲染: {e}")
+                # Fallback to remote render if local fails
+                summary_image_url = await html_renderer.render_t2i(
+                    summary,
+                    template_name=html_template_name,
+                )
         # 4. 构建消息并发送
         text_payload = {
             "group_id": group_id,

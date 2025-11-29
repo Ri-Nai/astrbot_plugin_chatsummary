@@ -3,6 +3,7 @@
 from typing import Iterable
 
 from astrbot.api import html_renderer, logger
+from ..utils import ImageRenderer
 
 from .llm_service import (
     LLMEmptyResponseError,
@@ -239,14 +240,20 @@ class SummaryOrchestrator:
         group_config: dict | None = None,
     ) -> str:
         config = group_config or self.config.get_group_config(str(group_id))
-        html_template = config.get(
+        html_template_name = config.get(
             "html_renderer_template",
             self.config.default_html_template,
         )
-        return await html_renderer.render_t2i(
-            summary,
-            template_name=html_template,
-        )
+        
+        try:
+            renderer = ImageRenderer(template_name=html_template_name)
+            return renderer.render(summary, group_id=str(group_id))
+        except Exception as e:
+            logger.error(f"本地渲染失败，尝试使用远程渲染: {e}")
+            return await html_renderer.render_t2i(
+                summary,
+                template_name=html_template_name,
+            )
         
     @staticmethod
     def _ensure_list(messages: Iterable | None) -> list:
