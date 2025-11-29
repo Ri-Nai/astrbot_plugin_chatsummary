@@ -2,6 +2,7 @@ import os
 import markdown
 from jinja2 import Template
 from weasyprint import HTML
+from weasyprint.text.fonts import FontConfiguration
 import fitz  # PyMuPDF
 from PIL import Image, ImageOps
 import io
@@ -57,8 +58,22 @@ class ImageRenderer:
              self.template_content = self.template_content.split('<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js">')[0] + "</body></html>"
 
         # Ensure CSS @page margin is 0 for better stitching
-        if '@page {' not in self.template_content:
-             self.template_content = self.template_content.replace('<style>', '<style>\n    @page {\n      margin: 0;\n    }\n')
+        # And inject Chinese font support
+        extra_css = """
+    @page {
+      margin: 0;
+    }
+    body {
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", "Noto Sans CJK SC", sans-serif !important;
+    }
+    """
+        if '</style>' in self.template_content:
+             self.template_content = self.template_content.replace('</style>', f'{extra_css}\n</style>')
+        elif '<style>' in self.template_content:
+             self.template_content = self.template_content.replace('<style>', f'<style>\n{extra_css}\n')
+        else:
+             # Inject style if missing
+             self.template_content = self.template_content.replace('</head>', f'<style>\n{extra_css}\n</style>\n</head>')
 
         self.jinja_template = Template(self.template_content)
 
@@ -81,8 +96,9 @@ class ImageRenderer:
         full_html = self.jinja_template.render(content=html_body)
 
         # 3. Generate PDF using WeasyPrint
+        font_config = FontConfiguration()
         html = HTML(string=full_html, base_url=self.base_url)
-        pdf_bytes = html.write_pdf()
+        pdf_bytes = html.write_pdf(font_config=font_config)
 
         # 4. Convert PDF to Image using PyMuPDF (fitz) and Stitch/Crop
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
