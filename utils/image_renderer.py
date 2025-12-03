@@ -4,7 +4,7 @@ from jinja2 import Template
 from weasyprint import HTML
 from weasyprint.text.fonts import FontConfiguration
 import fitz  # PyMuPDF
-from PIL import Image, ImageOps
+from PIL import Image
 import io
 from datetime import datetime
 import asyncio
@@ -26,6 +26,33 @@ class ImageRenderer:
         self.template_content = None
         self.base_url = os.getcwd()
         self.jinja_template = None
+
+    def _crop_bottom_whitespace(self, image: Image.Image, tolerance: int = 240, padding: int = 20) -> Image.Image:
+        """Trim white space from the bottom while keeping a sane padding."""
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+
+        pixels = image.load()
+        width, height = image.size
+
+        bottom = height - 1
+        # Scan upwards until we find a row that is not almost white
+        while bottom >= 0:
+            row_has_content = False
+            for x in range(width):
+                r, g, b = pixels[x, bottom]
+                if r < tolerance or g < tolerance or b < tolerance:
+                    row_has_content = True
+                    break
+            if row_has_content:
+                break
+            bottom -= 1
+
+        if bottom < 0:
+            return image
+
+        crop_bottom = min(height, bottom + 1 + padding)
+        return image.crop((0, 0, width, crop_bottom))
 
     def _get_font_css(self):
         """
@@ -80,7 +107,7 @@ class ImageRenderer:
             return
 
         if not self.template_name:
-             raise ValueError("template_name must be provided.")
+            raise ValueError("template_name must be provided.")
 
         if html_renderer is None:
             raise RuntimeError("astrbot.api is not available, cannot load template by name.")
@@ -92,30 +119,30 @@ class ImageRenderer:
         self.template_content = content
         
         if not self.template_content:
-             raise ValueError(f"Could not load template content for name: {self.template_name}")
+            raise ValueError(f"Could not load template content for name: {self.template_name}")
 
         # Adapt template if it's the original one (with JS injection)
         if '<article id="content"></article>' in self.template_content:
-             self.template_content = self.template_content.replace(
+            self.template_content = self.template_content.replace(
                 '<article id="content"></article>', 
                 '<article id="content">{{ content }}</article>'
             )
         
         # Remove marked.js script if present to avoid confusion (though WeasyPrint ignores it)
         if '<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js">' in self.template_content:
-             self.template_content = self.template_content.split('<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js">')[0] + "</body></html>"
+            self.template_content = self.template_content.split('<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js">')[0] + "</body></html>"
 
         # Ensure CSS @page margin is 0 for better stitching
         # And inject Chinese font support
         extra_css = self._get_font_css()
-        
+
         if '</style>' in self.template_content:
-             self.template_content = self.template_content.replace('</style>', f'{extra_css}\n</style>')
+            self.template_content = self.template_content.replace('</style>', f'{extra_css}\n</style>')
         elif '<style>' in self.template_content:
-             self.template_content = self.template_content.replace('<style>', f'<style>\n{extra_css}\n')
+            self.template_content = self.template_content.replace('<style>', f'<style>\n{extra_css}\n')
         else:
-             # Inject style if missing
-             self.template_content = self.template_content.replace('</head>', f'<style>\n{extra_css}\n</style>\n</head>')
+            # Inject style if missing
+            self.template_content = self.template_content.replace('</head>', f'<style>\n{extra_css}\n</style>\n</head>')
 
         self.jinja_template = Template(self.template_content)
 
@@ -128,7 +155,7 @@ class ImageRenderer:
             output_path (str): The path to save the generated image (e.g., 'output.png').
         """
         if not self.jinja_template:
-             raise RuntimeError("Template not loaded. Call render() first.")
+            raise RuntimeError("Template not loaded. Call render() first.")
 
         # 1. Convert Markdown to HTML
         # 'extra' supports tables, 'codehilite' supports code highlighting
@@ -173,16 +200,7 @@ class ImageRenderer:
             y_offset += img.height
             
         # 6. Crop whitespace
-        inverted_image = ImageOps.invert(stitched_image.convert('RGB'))
-        bbox = inverted_image.getbbox()
-        
-        if bbox:
-            padding = 20
-            crop_bottom = min(total_height, bbox[3] + padding)
-            crop_box = (0, 0, total_width, crop_bottom)
-            final_image = stitched_image.crop(crop_box)
-        else:
-            final_image = stitched_image
+        final_image = self._crop_bottom_whitespace(stitched_image)
 
         # 7. Save
         final_image.save(output_path)
